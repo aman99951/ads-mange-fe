@@ -1,0 +1,74 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+body {
+  margin: 0;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(217, 160, 50, 0.3);
+  border-radius: 999px;
+  transition: background 0.2s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(217, 160, 50, 0.5);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(217, 160, 50, 0.2);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(217, 160, 50, 0.4);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(217, 160, 50, 0.3) transparent;
+}
+
+.dark * {
+  scrollbar-color: rgba(217, 160, 50, 0.2) transparent;
+}
+
+::selection {
+  background: rgba(217, 160, 50, 0.3);
+  color: inherit;
+}
+
+:focus-visible {
+  outline-color: rgba(217, 160, 50, 0.5);
+}
+
+select option {
+  background: #fff;
+  color: #1a1a1a;
+}
+
+.dark select option {
+  background: #1a1a1a;
+  color: #e5e5e5;
+}
+
+select option:checked {
+  background: rgba(217, 160, 50, 0.15);
+  color: inherit;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px transparent inset;
+  -webkit-text-fill-color: inherit;
+  transition: background-color 5000s ease-in-out 0s;
+}
