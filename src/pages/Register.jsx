@@ -40,7 +40,7 @@ export default function Register({ onRegister }) {
     setError('');
     try {
       const res = await auth.register({ name: name.trim(), mobile, otp });
-      localStorage.setItem('access', res.access);
+      sessionStorage.setItem('access', res.access);
       onRegister(res.user);
     } catch (err) {
       setError(err.message);

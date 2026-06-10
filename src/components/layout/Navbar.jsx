@@ -44,8 +44,8 @@ export default function Navbar({ user, onLogout }) {
   const navItems = isManager ? MANAGER_NAV : CLIENT_NAV;
 
   const handleLogout = () => {
-    localStorage.removeItem('access');
-    localStorage.removeItem('user');
+    sessionStorage.removeItem('access');
+    sessionStorage.removeItem('user');
     onLogout();
     navigate(isManager ? '/manager' : '/login');
   };

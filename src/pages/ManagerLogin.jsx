@@ -19,7 +19,7 @@ export default function ManagerLogin({ onLogin }) {
     setError('');
     try {
       const res = await auth.managerLogin(username, password);
-      localStorage.setItem('access', res.access);
+      sessionStorage.setItem('access', res.access);
       onLogin(res.user);
     } catch (err) {
       setError(err.message);

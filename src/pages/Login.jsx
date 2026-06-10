@@ -38,7 +38,7 @@ export default function Login({ onLogin }) {
     setError('');
     try {
       const res = await auth.verifyOTP(mobile, otp);
-      localStorage.setItem('access', res.access);
+      sessionStorage.setItem('access', res.access);
       onLogin(res.user);
     } catch (err) {
       setError(err.message);

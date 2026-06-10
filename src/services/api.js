@@ -1,7 +1,7 @@
 import { API_BASE } from '../constants';
 
 function getToken() {
-  return localStorage.getItem('access');
+  return sessionStorage.getItem('access');
 }
 
 async function request(endpoint, options = {}) {
@@ -12,9 +12,9 @@ async function request(endpoint, options = {}) {
 
   const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
   if (res.status === 401 && !endpoint.includes('/auth/manager-login/')) {
-    const stored = localStorage.getItem('user');
+    const stored = sessionStorage.getItem('user');
     const isManager = stored ? JSON.parse(stored)?.role === 'manager' : false;
-    localStorage.removeItem('access');
+    sessionStorage.removeItem('access');
     window.location.href = isManager ? '/manager' : '/login';
     throw new Error('Unauthorized');
   }
