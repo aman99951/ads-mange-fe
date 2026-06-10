@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { useAd } from '../hooks/useAds';
@@ -24,23 +24,16 @@ export default function AdDetail() {
   const [error, setError] = useState('');
   const [iterationModal, setIterationModal] = useState(false);
   const [iterationFeedback, setIterationFeedback] = useState('');
-  const [generating, setGenerating] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
-  const pollRef = useRef(null);
-  const fetchedRef = useRef(false);
 
   useEffect(() => {
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, []);
-
-  useEffect(() => {
-    if (ad?.final_asset && !fetchedRef.current) {
-      fetchedRef.current = true;
+    if (ad?.final_asset) {
       ads.downloadFinal(id).then(res => {
         if (res.url) setVideoUrl(res.url);
       }).catch(() => {});
+    } else {
+      setVideoUrl('');
     }
-    if (!ad?.final_asset) fetchedRef.current = false;
   }, [ad?.final_asset, id]);
 
   const handleSubmit = async () => {
@@ -75,30 +68,6 @@ export default function AdDetail() {
       if (res.url) window.open(res.url, '_blank');
     } catch (err) {
       setError(err.message);
-    }
-  };
-
-  const handleGenerateVideo = async () => {
-    setActionLoading(true);
-    setError('');
-    try {
-      await ads.generateVideo(id);
-      setGenerating(true);
-      pollRef.current = setInterval(async () => {
-        try {
-          const updated = await ads.get(id);
-          if (updated.final_asset || updated.generation_error) {
-            clearInterval(pollRef.current);
-            pollRef.current = null;
-            setGenerating(false);
-            await refetch();
-          }
-        } catch { /* ignore poll errors */ }
-      }, 3000);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setActionLoading(false);
     }
   };
 
@@ -205,11 +174,6 @@ export default function AdDetail() {
             )}
           </div>
         )}
-        {ad.text_content && (
-          <div className={`px-3 py-2 rounded-lg text-xs ${dark ? 'bg-neutral-800/60 text-neutral-400' : 'bg-stone-100 text-stone-500'}`}>
-            {ad.text_content}
-          </div>
-        )}
       </SectionCard>
 
       {ad.admin_feedback && (
@@ -243,42 +207,7 @@ export default function AdDetail() {
         </SectionCard>
       )}
 
-      <div className={`rounded-2xl p-6 mb-8 flex items-start gap-4 transition-all duration-500 ${
-        dark ? 'bg-neutral-900/50 border border-amber-500/20' : 'bg-amber-50 border border-amber-200'
-      }`}>
-        {generating ? (
-          <>
-            <svg className="w-8 h-8 animate-spin text-amber-500 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            <div>
-              <p className={`text-sm font-medium ${dark ? 'text-amber-300' : 'text-amber-800'}`}>Generating your video...</p>
-              <p className={`text-xs mt-0.5 ${dark ? 'text-neutral-500' : 'text-amber-600/70'}`}>This may take a minute. We'll update you once it's ready.</p>
-            </div>
-          </>
-        ) : ad.status === 'approved' && ad.generation_error ? (
-          <>
-            <svg className="w-8 h-8 text-red-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-            </svg>
-            <div className="flex-1">
-              <p className={`text-sm font-medium ${dark ? 'text-red-300' : 'text-red-800'}`}>Video generation failed</p>
-              <p className={`text-xs mt-0.5 ${dark ? 'text-neutral-500' : 'text-red-600/70'}`}>{ad.generation_error}</p>
-            </div>
-            <Button onClick={handleGenerateVideo} loading={actionLoading} variant="ghost">
-              Retry
-            </Button>
-          </>
-        ) : (
-          <Button onClick={handleGenerateVideo} loading={actionLoading}>
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-            </svg>
-            Generate Video
-          </Button>
-        )}
-      </div>
+
 
       {ad.iterations?.length > 0 && (
         <SectionCard title="Revision History" className="mb-8">

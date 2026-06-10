@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { useAd } from '../hooks/useAds';
@@ -21,6 +21,47 @@ export default function ManagerAdDetail() {
   const [actionLoading, setActionLoading] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [videoUrl, setVideoUrl] = useState('');
+  const pollRef = useRef(null);
+
+  useEffect(() => {
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
+
+  useEffect(() => {
+    if (ad?.final_asset) {
+      ads.downloadFinal(id).then(res => {
+        if (res.url) setVideoUrl(res.url);
+      }).catch(() => {});
+    } else {
+      setVideoUrl('');
+    }
+  }, [ad?.final_asset, id]);
+
+  const handleGenerateVideo = async () => {
+    setActionLoading(true);
+    setError('');
+    try {
+      await ads.generateVideo(id);
+      setGenerating(true);
+      pollRef.current = setInterval(async () => {
+        try {
+          const updated = await ads.get(id);
+          if (updated.final_asset || updated.generation_error) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+            setGenerating(false);
+            await refetch();
+          }
+        } catch { /* ignore poll errors */ }
+      }, 3000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const handleApprove = async () => {
     setActionLoading(true);
@@ -168,16 +209,71 @@ export default function ManagerAdDetail() {
         </SectionCard>
       )}
 
-      {ad.final_asset && (
+      {videoUrl && (
         <SectionCard title="Generated Video" className="mb-8">
-          {ad.final_asset ? (
-            <video src={ad.final_asset} controls className="w-full max-w-2xl rounded-lg" style={{ maxHeight: '400px' }}>
+          <div className="space-y-3">
+            <video
+              src={videoUrl}
+              controls
+              className="w-full max-w-2xl rounded-lg"
+              style={{ maxHeight: '400px' }}
+            >
               Your browser does not support the video tag.
             </video>
-          ) : (
-            <p className={`text-sm ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>No video generated yet</p>
-          )}
+            <Button onClick={async () => {
+              try {
+                const res = await ads.downloadFinal(id);
+                if (res.url) window.open(res.url, '_blank');
+              } catch (err) {
+                setError(err.message);
+              }
+            }}>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              Download Video
+            </Button>
+          </div>
         </SectionCard>
+      )}
+
+      {ad.status === 'approved' && (
+        <div className={`rounded-2xl p-6 mb-8 flex items-start gap-4 transition-all duration-500 ${
+          dark ? 'bg-neutral-900/50 border border-amber-500/20' : 'bg-amber-50 border border-amber-200'
+        }`}>
+          {generating ? (
+            <>
+              <svg className="w-8 h-8 animate-spin text-amber-500 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <div>
+                <p className={`text-sm font-medium ${dark ? 'text-amber-300' : 'text-amber-800'}`}>Generating your video...</p>
+                <p className={`text-xs mt-0.5 ${dark ? 'text-neutral-500' : 'text-amber-600/70'}`}>This may take a minute. We'll update you once it's ready.</p>
+              </div>
+            </>
+          ) : ad.generation_error ? (
+            <>
+              <svg className="w-8 h-8 text-red-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              </svg>
+              <div className="flex-1">
+                <p className={`text-sm font-medium ${dark ? 'text-red-300' : 'text-red-800'}`}>Video generation failed</p>
+                <p className={`text-xs mt-0.5 ${dark ? 'text-neutral-500' : 'text-red-600/70'}`}>{ad.generation_error}</p>
+              </div>
+              <Button onClick={handleGenerateVideo} loading={actionLoading} variant="ghost">
+                Retry
+              </Button>
+            </>
+          ) : !videoUrl && (
+            <Button onClick={handleGenerateVideo} loading={actionLoading}>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+              </svg>
+              Generate Video
+            </Button>
+          )}
+        </div>
       )}
 
       <div className={`rounded-2xl p-6 space-y-4 ${dark ? 'bg-neutral-900/50 border border-neutral-800' : 'bg-white border border-stone-200 shadow-sm'}`}>

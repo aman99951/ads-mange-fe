@@ -39,7 +39,6 @@ export default function CreateAd() {
   const [selectedAudienceIds, setSelectedAudienceIds] = useState([]);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [textContent, setTextContent] = useState('');
   const [asset, setAsset] = useState(null);
 
   const toggleLocality = (loc) => {
@@ -68,7 +67,6 @@ export default function CreateAd() {
       const payload = {
         title: title.trim(),
         description: description.trim(),
-        text_content: textContent.trim(),
         target_area_ids: selectedLocalities.map((l) => l.id),
         target_audience_ids: selectedAudienceIds,
       };
@@ -131,14 +129,6 @@ export default function CreateAd() {
             </div>
             <Input label="Campaign Title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., Summer Sale 2026" />
             <Input label="Description" textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe your ad campaign..." />
-            <Input
-              label="Text Content for Video Generation"
-              textarea
-              value={textContent}
-              onChange={(e) => setTextContent(e.target.value)}
-              placeholder="Describe the video you want AI to generate. Include details like scene, mood, colors, text overlay, and call-to-action. This text will be used as the prompt for Veo 3 AI video generation."
-              className="min-h-[100px]"
-            />
 
             <div className="relative">
               <div className={`absolute inset-0 flex items-center ${dark ? 'text-neutral-700' : 'text-stone-300'}`}><div className="w-full border-t" /></div>
@@ -191,7 +181,6 @@ export default function CreateAd() {
                 <p className={`text-sm font-medium ${dark ? 'text-neutral-100' : 'text-neutral-900'}`}>{title || 'Untitled'}</p>
                 {description && <p className={`text-xs mt-0.5 line-clamp-2 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>{description}</p>}
                 {asset && <p className={`text-xs mt-1 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>Asset: {asset.name}</p>}
-                {textContent && <p className={`text-xs mt-1 line-clamp-2 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>Text: {textContent}</p>}
               </ReviewCard>
             </div>
 
