@@ -22,6 +22,7 @@ async function request(endpoint, options = {}) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || err.error || JSON.stringify(err));
   }
+  if (res.status === 204) return null;
   return res.json();
 }
 
