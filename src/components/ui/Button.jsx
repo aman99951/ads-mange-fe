@@ -15,7 +15,7 @@ export default function Button({ children, variant = 'primary', loading, disable
   return (
     <button
       disabled={disabled || loading}
-      className={`inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold tracking-wide transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed ${t(variantStyles[variant])(dark)} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold tracking-wide transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed hover-lift ${t(variantStyles[variant])(dark)} ${className}`}
       {...props}
     >
       {loading && (
