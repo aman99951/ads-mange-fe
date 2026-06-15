@@ -1,19 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { colors } from '../../config/theme';
 
 const t = (k) => (d) => colors[d ? 'dark' : 'light'][k];
 
-export default function Modal({ open, onClose, title, children }) {
+export default function Modal({ open, onClose, title, children, className = '' }) {
   const { dark } = useTheme();
   const [visible, setVisible] = useState(false);
 
+  const prevOpen = useRef(open);
   useEffect(() => {
-    if (open) {
+    if (open && !prevOpen.current) {
       requestAnimationFrame(() => setVisible(true));
     } else {
-      setVisible(false);
+      setVisible(open);
     }
+    prevOpen.current = open;
   }, [open]);
 
   useEffect(() => {
@@ -32,13 +34,15 @@ export default function Modal({ open, onClose, title, children }) {
         onClick={onClose}
       />
       <div
-        className={`relative w-full max-w-lg rounded-2xl p-6 shadow-2xl transition-all duration-300 ${
+        className={`relative w-full max-w-lg rounded-2xl p-6 sm:p-8 shadow-2xl transition-all duration-300 ${
           visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-4'
-        } ${t('card')(dark)}`}
+        } ${dark ? 'bg-neutral-900/95 backdrop-blur-xl border border-neutral-800' : 'bg-white/95 backdrop-blur-xl border border-stone-200'} ${className}`}
       >
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-5">
           <h2 className={`text-lg font-bold tracking-tight transition-colors duration-500 ${t('text')(dark)}`}>{title}</h2>
-          <button onClick={onClose} className={`p-1.5 rounded-lg transition-colors duration-300 ${t('toggle')(dark)}`}>
+          <button onClick={onClose} className={`p-1.5 rounded-lg transition-all duration-300 hover-lift ${
+            dark ? 'hover:bg-neutral-800 text-neutral-400 hover:text-amber-400' : 'hover:bg-stone-100 text-stone-400 hover:text-amber-600'
+          }`}>
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>

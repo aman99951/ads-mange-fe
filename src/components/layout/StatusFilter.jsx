@@ -21,15 +21,19 @@ export default function StatusFilter({ filters = AD_STATUS_FILTERS, active, onCh
           <button
             key={s}
             onClick={() => onChange(s)}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all duration-300 ${
+            className={`relative flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all duration-300 hover-lift ${
               isActive
-                ? (dark ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40' : 'bg-amber-500 text-white border border-amber-600')
-                : (dark ? 'bg-neutral-900 text-neutral-500 border border-neutral-800 hover:border-neutral-700' : 'bg-stone-100 text-stone-500 border border-stone-200 hover:border-stone-300')
+                ? dark
+                  ? 'bg-gradient-to-r from-amber-500/20 to-amber-600/10 text-amber-400 border border-amber-500/30 shadow-[0_0_20px_rgba(217,160,50,0.08)]'
+                  : 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg shadow-amber-500/20'
+                : dark
+                  ? 'bg-neutral-900/60 text-neutral-500 border border-neutral-800 hover:border-neutral-700 hover:text-neutral-300 backdrop-blur-sm'
+                  : 'bg-stone-100/80 text-stone-500 border border-stone-200 hover:border-stone-300 hover:text-stone-700 backdrop-blur-sm'
             }`}
           >
             {formatLabel(s)}
             {count > 0 && (
-              <span className={`text-[10px] ${isActive ? (dark ? 'text-amber-400/70' : 'text-white/70') : (dark ? 'text-neutral-600' : 'text-stone-400')}`}>
+              <span className={`text-[10px] font-semibold ${isActive ? (dark ? 'text-amber-400/70' : 'text-white/70') : (dark ? 'text-neutral-600' : 'text-stone-400')}`}>
                 {count}
               </span>
             )}

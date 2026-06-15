@@ -48,18 +48,18 @@ export default function Login({ onLogin }) {
   };
 
   return (
-    <div className={`min-h-screen flex items-center justify-center p-4 transition-all duration-700 ${c(dark ? 'dark' : 'light').page}`}>
+    <div className={`min-h-screen flex items-center justify-center p-4 transition-all duration-700 ${c(dark ? 'dark' : 'light').page} ${c(dark ? 'dark' : 'light').pageGradient}`}>
       {/* Animated gradient orbs */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className={`absolute -top-48 -right-48 w-96 h-96 rounded-full blur-[120px] animate-float transition-colors duration-700 ${c(dark ? 'dark' : 'light').glow}`} />
-        <div className={`absolute -bottom-48 -left-48 w-96 h-96 rounded-full blur-[120px] animate-float transition-colors duration-700 ${c(dark ? 'dark' : 'light').glowSubtle}`} style={{ animationDelay: '-2s' }} />
-        <div className={`absolute top-1/3 -left-24 w-64 h-64 rounded-full blur-[100px] transition-colors duration-700 ${c(dark ? 'dark' : 'light').glow}`} style={{ opacity: 0.5 }} />
+        <div className={`absolute -top-48 -right-48 w-96 h-96 rounded-full blur-[150px] animate-float-slow transition-colors duration-700 ${c(dark ? 'dark' : 'light').glow}`} />
+        <div className={`absolute -bottom-48 -left-48 w-96 h-96 rounded-full blur-[150px] animate-float-slow transition-colors duration-700 ${c(dark ? 'dark' : 'light').glowSubtle}`} style={{ animationDelay: '-3s' }} />
+        <div className={`absolute top-1/3 -left-24 w-64 h-64 rounded-full blur-[120px] transition-colors duration-700 ${c(dark ? 'dark' : 'light').glowViolet}`} style={{ opacity: 0.5 }} />
       </div>
 
       <div className={`relative w-full max-w-md animate-fade-in-up ${step === 'otp' ? 'scale-[1.02]' : 'scale-100'}`}>
         <div className={`rounded-2xl p-8 sm:p-10 transition-all duration-500 backdrop-blur-xl ${
           dark
-            ? 'bg-neutral-900/80 border border-amber-500/15 shadow-[0_0_60px_rgba(217,160,50,0.06)]'
+            ? 'bg-neutral-900/80 border border-amber-500/12 shadow-[0_0_60px_rgba(217,160,50,0.06)]'
             : 'bg-white/90 border border-stone-200 shadow-xl shadow-stone-200/50'
         }`}>
           {/* Logo & Header */}

@@ -19,7 +19,7 @@ export default function EmptyState({ icon, title, description, action, compact }
       )}
       <h3 className={`text-lg font-semibold mb-1.5 transition-colors duration-500 ${t('text')(dark)}`}>{title}</h3>
       <p className={`text-sm max-w-xs mx-auto transition-colors duration-500 ${t('textMuted')(dark)}`}>{description}</p>
-      {action}
+      {action && <div className="mt-2">{action}</div>}
     </div>
   );
 }

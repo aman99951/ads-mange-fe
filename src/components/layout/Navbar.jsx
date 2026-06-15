@@ -22,10 +22,12 @@ function NavLink({ item, currentPath, dark, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 whitespace-nowrap ${
+      className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 whitespace-nowrap ${
         isActive
-          ? (dark ? 'bg-amber-500/15 text-amber-400 border border-amber-500/25' : 'bg-amber-50 text-amber-700 border border-amber-200')
-          : `${dark ? 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800' : 'text-stone-500 hover:text-stone-800 hover:bg-stone-100'}`
+          ? (dark
+              ? 'bg-amber-500/15 text-amber-300 border border-amber-500/25 shadow-[0_0_20px_rgba(217,160,50,0.08)]'
+              : 'bg-amber-50 text-amber-700 border border-amber-200 shadow-sm')
+          : `${dark ? 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60' : 'text-stone-500 hover:text-stone-800 hover:bg-stone-100'}`
       }`}
     >
       <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -51,22 +53,20 @@ export default function Navbar({ user, onLogout }) {
   };
 
   return (
-    <header className={`sticky top-0 z-40 w-full border-b transition-all duration-500 ${
-      dark ? 'bg-neutral-950/80 backdrop-blur-xl border-neutral-800' : 'bg-white/80 backdrop-blur-xl border-stone-200'
-    }`}>
-      <div className="w-full px-4 sm:px-6 lg:px-8">
+    <header className={`sticky top-0 z-40 w-full transition-all duration-500 ${t('navGlass')(dark)}`}>
+      <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center gap-1 sm:gap-2">
             <button
               onClick={() => navigate(isManager ? '/manager/dashboard' : '/dashboard')}
-              className={`inline-flex items-center gap-2.5 px-3 py-2 rounded-lg text-base font-bold tracking-tight mr-2 sm:mr-4 transition-colors duration-500 ${t('text')(dark)}`}
+              className={`inline-flex items-center gap-2.5 px-3 py-2 rounded-xl text-base font-bold tracking-tight mr-2 sm:mr-4 transition-all duration-300 hover-lift ${t('text')(dark)}`}
             >
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-500 ${t('logo')(dark)}`}>
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-500 ${t('logo')(dark)}`}>
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3" />
                 </svg>
               </div>
-              <span className="hidden sm:inline">Ads Manager</span>
+              <span className="hidden sm:inline text-gradient-amber">Ads Manager</span>
             </button>
 
             <nav className="hidden md:flex items-center gap-1">
@@ -78,21 +78,22 @@ export default function Navbar({ user, onLogout }) {
 
           <div className="flex items-center gap-2 sm:gap-3">
             <ThemeToggle />
-            <div className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors duration-300 ${
-              dark ? 'bg-neutral-900/60' : 'bg-stone-50'
+            <div className={`hidden sm:flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl transition-all duration-300 border ${
+              dark ? 'bg-neutral-900/60 border-neutral-800/50' : 'bg-stone-50 border-stone-200/50'
             }`}>
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                dark ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-700'
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${
+                dark ? 'bg-gradient-to-br from-amber-500 to-amber-600 text-black' : 'bg-gradient-to-br from-amber-500 to-amber-600 text-black'
               }`}>
                 {(user?.name || 'U').charAt(0).toUpperCase()}
               </div>
               <span className={`text-xs font-medium transition-colors duration-500 ${t('textDim')(dark)}`}>
-                {user?.name || user?.mobile} {isManager ? '(Manager)' : ''}
+                {user?.name || user?.mobile}
               </span>
             </div>
             <button
               onClick={handleLogout}
-              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-300 ${t('btnLogout')(dark)}`}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-300 hover-lift ${t('btnLogout')(dark)}`}
+              title="Logout"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />

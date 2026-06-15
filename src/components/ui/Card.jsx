@@ -8,12 +8,14 @@ export function SectionCard({ dark: forcedDark, title, children, className = '' 
   const dark = forcedDark !== undefined ? forcedDark : themeDark;
 
   return (
-    <div className={`rounded-xl p-4 sm:p-5 transition-all duration-500 hover-lift ${
+    <div className={`rounded-2xl p-5 sm:p-6 transition-all duration-500 ${
       dark
-        ? 'bg-neutral-900/50 border border-neutral-800 hover:border-amber-500/20'
-        : 'bg-white/80 backdrop-blur-sm border border-stone-200 shadow-sm hover:shadow-md'
+        ? 'bg-neutral-900/70 backdrop-blur-sm border border-neutral-800 hover:border-amber-500/15'
+        : 'bg-white/90 backdrop-blur-sm border border-stone-200 shadow-sm hover:shadow-md'
     } ${className}`}>
-      <h3 className={`text-xs font-semibold uppercase tracking-wider mb-3 transition-colors duration-500 ${t('textMuted')(dark)}`}>{title}</h3>
+      {title && (
+        <h3 className={`text-xs font-semibold uppercase tracking-wider mb-4 transition-colors duration-500 ${t('textMuted')(dark)}`}>{title}</h3>
+      )}
       {children}
     </div>
   );
@@ -24,44 +26,38 @@ export function StatCard({ dark: forcedDark, icon, label, value, accent, index =
   const dark = forcedDark !== undefined ? forcedDark : themeDark;
 
   const accentColors = {
-    approved: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20', iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-400' },
-    pending: { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/20', iconBg: 'bg-amber-500/15', iconColor: 'text-amber-400' },
-    total: { bg: 'bg-violet-500/10', text: 'text-violet-400', border: 'border-violet-500/20', iconBg: 'bg-violet-500/15', iconColor: 'text-violet-400' },
+    approved: { bg: dark ? 'bg-emerald-500/10' : 'bg-emerald-50', text: dark ? 'text-emerald-400' : 'text-emerald-700', border: dark ? 'border-emerald-500/20' : 'border-emerald-200', iconBg: dark ? 'bg-emerald-500/15' : 'bg-emerald-100', iconColor: dark ? 'text-emerald-400' : 'text-emerald-600' },
+    pending: { bg: dark ? 'bg-amber-500/10' : 'bg-amber-50', text: dark ? 'text-amber-400' : 'text-amber-700', border: dark ? 'border-amber-500/20' : 'border-amber-200', iconBg: dark ? 'bg-amber-500/15' : 'bg-amber-100', iconColor: dark ? 'text-amber-400' : 'text-amber-600' },
+    total: { bg: dark ? 'bg-violet-500/10' : 'bg-violet-50', text: dark ? 'text-violet-400' : 'text-violet-700', border: dark ? 'border-violet-500/20' : 'border-violet-200', iconBg: dark ? 'bg-violet-500/15' : 'bg-violet-100', iconColor: dark ? 'text-violet-400' : 'text-violet-600' },
   };
 
-  const lightAccent = {
-    approved: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', iconBg: 'bg-emerald-100', iconColor: 'text-emerald-600' },
-    pending: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', iconBg: 'bg-amber-100', iconColor: 'text-amber-600' },
-    total: { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200', iconBg: 'bg-violet-100', iconColor: 'text-violet-600' },
-  };
-
-  const ac = dark ? (accentColors[accent] || accentColors.total) : (lightAccent[accent] || lightAccent.total);
+  const ac = accentColors[accent] || accentColors.total;
 
   return (
     <div
-      className={`rounded-xl p-5 transition-all duration-300 hover-lift animate-fade-in-up ${
+      className={`rounded-2xl p-5 sm:p-6 transition-all duration-300 hover-lift animate-fade-in-up ${
         dark
-          ? 'bg-neutral-900/70 border border-neutral-800 hover:border-amber-500/25'
+          ? 'bg-neutral-900/70 backdrop-blur-sm border border-neutral-800 hover:border-amber-500/25'
           : 'bg-white/90 backdrop-blur-sm border border-stone-200 shadow-sm hover:shadow-lg'
       }`}
       style={{ animationDelay: `${(index || 0) * 100}ms` }}
     >
-      <div className="flex items-center justify-between mb-3">
-        <div className={`p-2.5 rounded-xl ${ac.iconBg} transition-all duration-300`}>
-          <svg className={`w-4 h-4 ${ac.iconColor}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <div className="flex items-center justify-between mb-4">
+        <div className={`p-3 rounded-xl ${ac.iconBg} transition-all duration-300`}>
+          <svg className={`w-5 h-5 ${ac.iconColor}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
           </svg>
         </div>
         {accent && (
-          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${ac.bg} ${ac.text} ${ac.border}`}>
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${ac.bg} ${ac.text} ${ac.border}`}>
             {value}
           </span>
         )}
       </div>
-      <p className="text-2xl sm:text-3xl font-bold tracking-tight transition-colors duration-500" style={{ color: dark ? '#f5f5f5' : '#1a1a1a' }}>
+      <p className="text-3xl sm:text-4xl font-bold tracking-tight transition-colors duration-500" style={{ color: dark ? '#f5f5f5' : '#1a1a1a' }}>
         {value}
       </p>
-      <p className={`text-xs mt-1 font-medium transition-colors duration-500 ${t('textMuted')(dark)}`}>{label}</p>
+      <p className={`text-xs sm:text-sm mt-1.5 font-medium transition-colors duration-500 ${t('textMuted')(dark)}`}>{label}</p>
     </div>
   );
 }
@@ -73,10 +69,10 @@ export function ClickableCard({ dark: forcedDark, children, onClick, className =
   return (
     <div
       onClick={onClick}
-      className={`rounded-xl p-4 sm:p-5 cursor-pointer transition-all duration-300 group hover-lift ${
+      className={`rounded-2xl p-5 sm:p-6 cursor-pointer transition-all duration-300 group hover-lift ${
         dark
-          ? 'bg-neutral-900/60 border border-neutral-800 hover:border-amber-500/30 hover:bg-neutral-900/80 hover:shadow-[0_0_30px_rgba(217,160,50,0.08)]'
-          : 'bg-white/80 backdrop-blur-sm border border-stone-200 shadow-sm hover:border-amber-300 hover:shadow-lg hover:bg-white'
+          ? 'bg-neutral-900/60 backdrop-blur-sm border border-neutral-800 hover:border-amber-500/30 hover:bg-neutral-900/80 hover:shadow-[0_0_40px_rgba(217,160,50,0.08)]'
+          : 'bg-white/80 backdrop-blur-sm border border-stone-200 shadow-sm hover:border-amber-300/60 hover:shadow-lg hover:bg-white'
       } ${className}`}
     >
       {children}

@@ -15,6 +15,7 @@ export default function PageHeader({ title, description, actions }) {
         {description && (
           <p className={`text-sm mt-1 transition-colors duration-500 ${t('textMuted')(dark)}`}>{description}</p>
         )}
+        <div className="section-divider mt-3" />
       </div>
       {actions && <div className="flex items-center gap-3 flex-shrink-0">{actions}</div>}
     </div>
