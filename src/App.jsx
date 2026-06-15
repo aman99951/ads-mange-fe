@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { colors } from './config/theme';
 import { useAuth } from './hooks/useAuth';
+import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
@@ -35,6 +36,7 @@ function AppContent() {
       {user && <Navbar user={user} onLogout={logout} />}
       <div className={`min-h-screen transition-colors duration-500 ${t('page')(dark)}`}>
         <Routes>
+          <Route path={ROUTES.LANDING} element={user ? <Navigate to={isManager ? ROUTES.MANAGER_DASHBOARD : ROUTES.DASHBOARD} replace /> : <Landing />} />
           <Route path={ROUTES.LOGIN} element={user ? <Navigate to={ROUTES.DASHBOARD} replace /> : <Login onLogin={login} />} />
           <Route path={ROUTES.REGISTER} element={user ? <Navigate to={ROUTES.DASHBOARD} replace /> : <Register onRegister={login} />} />
           <Route path={ROUTES.DASHBOARD} element={user && !isManager ? <Dashboard user={user} /> : <Navigate to={isManager ? ROUTES.MANAGER_DASHBOARD : ROUTES.LOGIN} replace />} />
@@ -47,7 +49,7 @@ function AppContent() {
           <Route path={ROUTES.MANAGER_AD_DETAIL} element={isManager ? <ManagerAdDetail /> : <Navigate to={ROUTES.MANAGER_LOGIN} replace />} />
           <Route path={ROUTES.MANAGER_TARGET_AREAS} element={isManager ? <ManagerTargetAreas /> : <Navigate to={ROUTES.MANAGER_LOGIN} replace />} />
 
-          <Route path="*" element={<Navigate to={user ? (isManager ? ROUTES.MANAGER_DASHBOARD : ROUTES.DASHBOARD) : ROUTES.LOGIN} replace />} />
+          <Route path="*" element={<Navigate to={user ? (isManager ? ROUTES.MANAGER_DASHBOARD : ROUTES.DASHBOARD) : ROUTES.LANDING} replace />} />
         </Routes>
       </div>
     </BrowserRouter>
