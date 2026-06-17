@@ -3,6 +3,7 @@ export const AD_STATUS = {
   PENDING_APPROVAL: 'pending_approval',
   APPROVED: 'approved',
   REJECTED: 'rejected',
+  EXPIRED: 'expired',
 };
 
 export const AD_STATUS_LABELS = {
@@ -10,15 +11,18 @@ export const AD_STATUS_LABELS = {
   pending_approval: 'Pending Approval',
   approved: 'Approved',
   rejected: 'Rejected',
+  expired: 'Expired',
 };
 
-export const AD_STATUS_FILTERS = ['all', 'draft', 'pending_approval', 'approved', 'rejected'];
+export const AD_STATUS_FILTERS = ['all', 'draft', 'pending_approval', 'approved', 'rejected', 'expired'];
 
 export const WIZARD_STEPS = [
   { num: 1, label: 'Target Area' },
   { num: 2, label: 'Audience' },
-  { num: 3, label: 'Ad Content' },
-  { num: 4, label: 'Review' },
+  { num: 3, label: 'Language' },
+  { num: 4, label: 'Ad Content' },
+  { num: 5, label: 'Schedule' },
+  { num: 6, label: 'Review' },
 ];
 
 export const ITERATION_ROLES = {
@@ -41,6 +45,10 @@ export const ROUTES = {
   MANAGER_DASHBOARD: '/manager/dashboard',
   MANAGER_AD_DETAIL: '/manager/ads/:id',
   MANAGER_TARGET_AREAS: '/manager/target-areas',
+  DEVELOPER_LOGIN: '/developer',
+  DEVELOPER_REGISTER: '/developer/register',
+  DEVELOPER_DASHBOARD: '/developer/dashboard',
+  DEVELOPER_PLAYGROUND: '/developer/playground',
 };
 
 export const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000/api';

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { colors } from '../config/theme';
-import { targetAreas, targetAudiences } from '../services/api';
+import { targetAreas, targetAudiences, languages } from '../services/api';
 import AppLayout from '../components/layout/AppLayout';
 import ErrorAlert from '../components/layout/ErrorAlert';
 import Button from '../components/ui/Button';
@@ -17,8 +17,11 @@ export default function ManagerTargetAreas() {
   const [error, setError] = useState('');
   const [areas, setAreas] = useState([]);
   const [audiences, setAudiences] = useState([]);
+  const [langs, setLangs] = useState([]);
   const [newAudience, setNewAudience] = useState({ profile: '', age_min: '', age_max: '' });
+  const [newLanguage, setNewLanguage] = useState('');
   const [audLoading, setAudLoading] = useState(false);
+  const [langLoading, setLangLoading] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -34,6 +37,7 @@ export default function ManagerTargetAreas() {
         setAreas(allAreas);
       }),
       targetAudiences.list().then(setAudiences),
+      languages.list().then(setLangs),
     ]).catch(err => setError(err.message)).finally(() => setLoading(false));
   }, []);
 
@@ -60,12 +64,35 @@ export default function ManagerTargetAreas() {
     }
   };
 
+  const handleAddLanguage = async () => {
+    if (!newLanguage.trim()) return;
+    setLangLoading(true);
+    try {
+      const created = await languages.create({ name: newLanguage.trim() });
+      setLangs(prev => [...prev, created]);
+      setNewLanguage('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLangLoading(false);
+    }
+  };
+
+  const handleDeleteLanguage = async (id) => {
+    try {
+      await languages.delete(id);
+      setLangs(prev => prev.filter(l => l.id !== id));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   if (loading) {
     return (
       <AppLayout fullWidth>
         <div className="max-w-[1400px] mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {[1, 2].map(i => (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {[1, 2, 3].map(i => (
               <div key={i} className={`rounded-2xl p-6 animate-pulse ${dark ? 'bg-neutral-900/60 border border-neutral-800' : 'bg-stone-100 border border-stone-200'}`}>
                 <div className={`h-6 w-48 rounded mb-4 ${dark ? 'bg-neutral-800' : 'bg-stone-200'}`} />
                 {[1, 2, 3, 4].map(j => (
@@ -98,7 +125,7 @@ export default function ManagerTargetAreas() {
 
         <ErrorAlert message={error} onDismiss={() => setError('')} />
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
           {/* Target Areas */}
           <div className={`rounded-2xl p-6 transition-all duration-500 animate-fade-in-up animate-delay-100 hover-lift ${
             dark ? 'bg-neutral-900/70 backdrop-blur-sm border border-neutral-800' : 'bg-white/90 backdrop-blur-sm border border-stone-200 shadow-sm'
@@ -200,6 +227,70 @@ export default function ManagerTargetAreas() {
                         </svg>
                       </button>
                     </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Languages */}
+          <div className={`rounded-2xl p-6 transition-all duration-500 animate-fade-in-up animate-delay-300 hover-lift ${
+            dark ? 'bg-neutral-900/70 backdrop-blur-sm border border-neutral-800' : 'bg-white/90 backdrop-blur-sm border border-stone-200 shadow-sm'
+          }`}>
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-1 h-6 rounded-full bg-gradient-to-b from-emerald-500 to-teal-500" />
+                <h2 className={`text-lg font-bold transition-colors duration-500 ${c(dark ? 'dark' : 'light').text}`}>Languages</h2>
+              </div>
+              <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+                dark ? 'bg-neutral-800 text-neutral-400 border border-neutral-700' : 'bg-stone-100 text-stone-500 border border-stone-200'
+              }`}>
+                {langs.length} {langs.length === 1 ? 'language' : 'languages'}
+              </span>
+            </div>
+
+            {/* Add Language Form */}
+            <div className={`p-5 rounded-xl mb-5 border transition-all duration-300 ${
+              dark ? 'bg-emerald-500/5 border-emerald-500/15' : 'bg-emerald-50/70 border-emerald-200'
+            }`}>
+              <div className="space-y-4">
+                <div>
+                  <label className={`block text-xs font-semibold uppercase tracking-widest mb-2 transition-colors duration-500 ${c(dark ? 'dark' : 'light').textMuted}`}>New Language</label>
+                  <Input value={newLanguage}
+                    onChange={(e) => setNewLanguage(e.target.value)}
+                    placeholder="e.g., Tamil, English, Hindi" />
+                </div>
+                <Button onClick={handleAddLanguage} loading={langLoading}
+                  disabled={!newLanguage.trim()}
+                  className="w-full"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                  Add Language
+                </Button>
+              </div>
+            </div>
+
+            {/* Language List */}
+            <div className="max-h-64 overflow-y-auto space-y-1 pr-1">
+              {langs.length === 0 ? (
+                <p className={`text-sm py-4 text-center transition-colors duration-500 ${c(dark ? 'dark' : 'light').textMuted}`}>No languages yet</p>
+              ) : (
+                langs.map(lang => (
+                  <div key={lang.id} className={`group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs transition-all duration-200 border ${
+                    dark ? 'bg-neutral-800/40 border-neutral-800 hover:border-emerald-500/20' : 'bg-stone-50 border-stone-200 hover:border-emerald-300 hover:bg-white'
+                  }`}>
+                    <span className={`font-semibold transition-colors duration-500 ${c(dark ? 'dark' : 'light').text}`}>{lang.name}</span>
+                    <button onClick={() => handleDeleteLanguage(lang.id)}
+                      className={`p-1.5 rounded-lg transition-all duration-200 opacity-0 group-hover:opacity-100 ${
+                        dark ? 'text-red-400 hover:bg-red-500/10' : 'text-red-500 hover:bg-red-50'
+                      }`}
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                      </svg>
+                    </button>
                   </div>
                 ))
               )}

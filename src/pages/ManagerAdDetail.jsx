@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { useAd } from '../hooks/useAds';
 import { ads } from '../services/api';
+import { developerApps } from '../services/api';
 import AppLayout from '../components/layout/AppLayout';
 import ErrorAlert from '../components/layout/ErrorAlert';
 import { DetailSkeleton } from '../components/layout/LoadingSkeleton';
@@ -15,6 +16,95 @@ import { colors } from '../config/theme';
 
 const c = (k) => colors[k];
 
+function LanguageVideoCard({ lang, asset, adId, dark, onGenerate, generating }) {
+  const [prompt, setPrompt] = useState(asset?.prompt || '');
+  const [videoUrl, setVideoUrl] = useState('');
+
+  useEffect(() => {
+    if (asset?.asset) {
+      ads.downloadFinal(adId, asset.id).then(res => {
+        if (res.url) setVideoUrl(res.url);
+      }).catch(() => {});
+    }
+  }, [asset?.asset, asset?.id, adId]);
+
+  return (
+    <div className={`rounded-xl p-5 border transition-all duration-300 ${
+      dark ? 'bg-neutral-800/40 border-neutral-700/50' : 'bg-stone-50 border-stone-200'
+    }`}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${
+            asset?.status === 'completed' ? 'bg-emerald-500' :
+            asset?.status === 'failed' ? 'bg-red-500' :
+            asset?.status === 'generating' ? 'bg-amber-500 animate-pulse' :
+            'bg-neutral-400'
+          }`} />
+          <h4 className={`text-sm font-bold ${c(dark ? 'dark' : 'light').text}`}>{lang.name}</h4>
+        </div>
+        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+          dark ? 'bg-neutral-700/50 text-neutral-400' : 'bg-white text-stone-500 border border-stone-200'
+        }`}>{asset?.status || 'pending'}</span>
+      </div>
+
+      <div className="mb-3 space-y-2">
+        <Input textarea value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder={`Prompt for ${lang.name} video...`}
+          className="text-xs"
+        />
+      </div>
+
+      {asset?.status === 'generating' && (
+        <div className={`flex items-center gap-3 p-3 rounded-lg mb-3 ${dark ? 'bg-amber-500/5' : 'bg-amber-50'}`}>
+          <svg className="w-5 h-5 animate-spin text-amber-500" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          <span className={`text-xs font-medium ${dark ? 'text-amber-300' : 'text-amber-700'}`}>Generating video...</span>
+        </div>
+      )}
+
+      {asset?.status === 'failed' && (
+        <div className={`p-3 rounded-lg text-xs mb-3 ${dark ? 'bg-red-500/10 text-red-300' : 'bg-red-50 text-red-700'}`}>
+          {asset.error || 'Generation failed'}
+        </div>
+      )}
+
+      {asset?.status === 'completed' && videoUrl && (
+        <div className="space-y-3 mb-3">
+          <div className="rounded-lg overflow-hidden border border-amber-500/10">
+            <video src={videoUrl} controls className="w-full max-h-48 object-contain bg-black/10">
+              Your browser does not support the video tag.
+            </video>
+          </div>
+          <Button size="sm" onClick={async () => {
+            try {
+              const res = await ads.downloadFinal(adId, asset.id);
+              if (res.url) window.open(res.url, '_blank');
+            } catch (err) {}
+          }}>
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            Download
+          </Button>
+        </div>
+      )}
+
+      <div className="pt-3 border-t" style={{ borderColor: dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)' }}>
+        <Button className="w-full" size="sm" onClick={() => onGenerate(lang.id, prompt)}
+          disabled={generating}>
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+          </svg>
+          {asset?.status === 'completed' ? 'Regenerate' : 'Generate'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function ManagerAdDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -24,8 +114,12 @@ export default function ManagerAdDetail() {
   const [actionLoading, setActionLoading] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
-  const [generating, setGenerating] = useState(false);
-  const [videoUrl, setVideoUrl] = useState('');
+  const [generatingLangs, setGeneratingLangs] = useState(new Set());
+  const [languageAssets, setLanguageAssets] = useState([]);
+  const [devApps, setDevApps] = useState([]);
+  const [pushedApps, setPushedApps] = useState([]);
+  const [selectedAppId, setSelectedAppId] = useState('');
+  const [pushing, setPushing] = useState(false);
   const pollRef = useRef(null);
 
   useEffect(() => {
@@ -33,36 +127,60 @@ export default function ManagerAdDetail() {
   }, []);
 
   useEffect(() => {
-    if (ad?.final_asset) {
-      ads.downloadFinal(id).then(res => {
-        if (res.url) setVideoUrl(res.url);
-      }).catch(() => {});
-    } else {
-      setVideoUrl('');
+    if (ad?.id) {
+      ads.languageAssetsList(id).then(setLanguageAssets).catch(() => {});
+      developerApps.list().then(setDevApps).catch(() => {});
+      ads.pushedApps(id).then(setPushedApps).catch(() => {});
     }
-  }, [ad?.final_asset, id]);
+  }, [ad?.id, id]);
 
-  const handleGenerateVideo = async () => {
-    setActionLoading(true);
-    setError('');
-    try {
-      await ads.generateVideo(id);
-      setGenerating(true);
+  const getAssetForLang = (langId) =>
+    languageAssets.find(a => a.language === langId);
+
+  const isAnyGenerating = () =>
+    languageAssets.some(a => a.status === 'generating');
+
+  useEffect(() => {
+    if (isAnyGenerating()) {
       pollRef.current = setInterval(async () => {
         try {
-          const updated = await ads.get(id);
-          if (updated.final_asset || updated.generation_error) {
+          const updated = await ads.languageAssetsList(id);
+          setLanguageAssets(updated);
+          if (!updated.some(a => a.status === 'generating')) {
             clearInterval(pollRef.current);
             pollRef.current = null;
-            setGenerating(false);
             await refetch();
           }
         } catch { /* ignore */ }
       }, 3000);
+      return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    }
+  }, [id, ad?.id]);
+
+  const handleGenerate = async (languageId, prompt) => {
+    setError('');
+    try {
+      await ads.generateLanguageVideo(id, languageId, prompt);
+      setGeneratingLangs(prev => new Set(prev).add(languageId));
+      const assets = await ads.languageAssetsList(id);
+      setLanguageAssets(assets);
     } catch (err) {
       setError(err.message);
+    }
+  };
+
+  const handlePushToApp = async () => {
+    if (!selectedAppId) return;
+    setPushing(true);
+    try {
+      await ads.pushToApp(id, parseInt(selectedAppId));
+      const updated = await ads.pushedApps(id);
+      setPushedApps(updated);
+      setToast({ show: true, message: 'Ad pushed to developer app successfully!', type: 'success' });
+    } catch (e) {
+      setError(e.message || 'Failed to push ad to app');
     } finally {
-      setActionLoading(false);
+      setPushing(false);
     }
   };
 
@@ -146,7 +264,7 @@ export default function ManagerAdDetail() {
         <ErrorAlert message={error} onDismiss={() => setError('')} />
 
         {/* Info Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 mb-8 animate-fade-in-up animate-delay-200">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-8 animate-fade-in-up animate-delay-200">
           <SectionCard title="Target Areas">
             {ad.target_areas?.length > 0 ? (
               <div className="space-y-2">
@@ -186,6 +304,33 @@ export default function ManagerAdDetail() {
               </div>
             ) : (
               <p className={`text-sm ${c(dark ? 'dark' : 'light').textMuted}`}>No audience selected</p>
+            )}
+          </SectionCard>
+
+          <SectionCard title="Languages">
+            {ad.languages?.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {ad.languages.map((lang) => (
+                  <span key={lang.id} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-300 ${
+                    dark ? 'bg-neutral-800/60 border border-neutral-700/50 text-neutral-300' : 'bg-stone-100 border border-stone-200 text-stone-600'
+                  }`}>
+                    {lang.name}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className={`text-sm ${c(dark ? 'dark' : 'light').textMuted}`}>No languages selected</p>
+            )}
+          </SectionCard>
+
+          <SectionCard title="Schedule">
+            {ad.scheduled_start || ad.scheduled_end ? (
+              <div className="space-y-1 text-xs">
+                {ad.scheduled_start && <p className={dark ? 'text-neutral-400' : 'text-stone-500'}>Start: {formatDate(ad.scheduled_start)}</p>}
+                {ad.scheduled_end && <p className={dark ? 'text-neutral-400' : 'text-stone-500'}>End: {formatDate(ad.scheduled_end)}</p>}
+              </div>
+            ) : (
+              <p className={`text-sm ${c(dark ? 'dark' : 'light').textMuted}`}>No schedule set</p>
             )}
           </SectionCard>
         </div>
@@ -244,66 +389,79 @@ export default function ManagerAdDetail() {
           </div>
         )}
 
-        {/* Video generation */}
-        {ad.status === 'approved' && (
-          <div className={`rounded-2xl p-5 sm:p-6 mb-8 flex items-start gap-4 transition-all duration-500 animate-fade-in-up animate-delay-300 ${
-            dark ? 'bg-neutral-900/70 backdrop-blur-sm border border-amber-500/15' : 'bg-white/90 backdrop-blur-sm border border-amber-200 shadow-sm'
-          }`}>
-            {generating ? (
-              <>
-                <div className={`p-3 rounded-full animate-glow-pulse ${dark ? 'bg-amber-500/10' : 'bg-amber-100'}`}>
-                  <svg className="w-6 h-6 animate-spin text-amber-500" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                </div>
-                <div>
-                  <p className={`text-sm font-medium ${dark ? 'text-amber-300' : 'text-amber-800'}`}>Generating your video...</p>
-                  <p className={`text-xs mt-0.5 ${dark ? 'text-neutral-500' : 'text-amber-600/70'}`}>This may take a minute. We'll update you once it's ready.</p>
-                </div>
-              </>
-            ) : ad.generation_error ? (
-              <>
-                <div className={`p-3 rounded-full ${dark ? 'bg-red-500/10' : 'bg-red-100'}`}>
-                  <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-                  </svg>
-                </div>
+        {/* Per-Language Video Generation */}
+        {ad.status === 'approved' && ad.languages?.length > 0 && (
+          <div className="mb-8 animate-fade-in-up animate-delay-300">
+            <SectionCard title="Video Generation by Language">
+              <p className={`text-xs mb-4 transition-colors duration-500 ${c(dark ? 'dark' : 'light').textMuted}`}>
+                Prompt is optional. Leave empty to use ad content, or write a custom prompt to improve the video.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {ad.languages.map((lang) => (
+                  <LanguageVideoCard
+                    key={lang.id}
+                    lang={lang}
+                    asset={getAssetForLang(lang.id)}
+                    adId={id}
+                    dark={dark}
+                    onGenerate={handleGenerate}
+                    generating={generatingLangs.has(lang.id)}
+                  />
+                ))}
+              </div>
+            </SectionCard>
+          </div>
+        )}
+
+        {/* Push to Developer App */}
+        {ad.status === 'approved' && devApps.length > 0 && (
+          <div className="mb-8 animate-fade-in-up animate-delay-350">
+            <SectionCard title="Push to Developer App">
+              <p className={`text-xs mb-3 ${c(dark ? 'dark' : 'light').textMuted}`}>
+                Push this approved ad to registered developer apps. Developers will see it via the public API.
+              </p>
+              <div className="flex items-end gap-3">
                 <div className="flex-1">
-                  <p className={`text-sm font-medium ${dark ? 'text-red-300' : 'text-red-800'}`}>Video generation failed</p>
-                  <p className={`text-xs mt-0.5 ${dark ? 'text-neutral-500' : 'text-red-600/70'}`}>{ad.generation_error}</p>
+                  <label className={`block text-xs font-medium mb-1 ${c(dark ? 'dark' : 'light').textMuted}`}>Select App</label>
+                  <select value={selectedAppId} onChange={e => setSelectedAppId(e.target.value)}
+                    className={`w-full rounded-lg px-3 py-2 text-sm border transition-colors duration-500 ${
+                      dark ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-white border-stone-300 text-stone-900'
+                    }`}>
+                    <option value="">-- Choose an app --</option>
+                    {devApps.filter(a => a.is_active).map(app => (
+                      <option key={app.id} value={app.id}>
+                        {app.app_name} ({app.app_type}){app.app_url ? ` - ${app.app_url}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {(() => {
+                    const sel = selectedAppId ? devApps.find(a => a.id === Number(selectedAppId)) : null;
+                    return sel?.app_url ? (
+                      <p className={`text-[10px] mt-1 truncate ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
+                        URL: {sel.app_url}
+                      </p>
+                    ) : null;
+                  })()}
                 </div>
-                <Button onClick={handleGenerateVideo} loading={actionLoading} variant="ghost">Retry</Button>
-              </>
-            ) : videoUrl ? (
-              <div className="w-full space-y-4">
-                <div className="rounded-xl overflow-hidden border border-amber-500/10 shadow-lg">
-                  <video src={videoUrl} controls className="w-full max-w-2xl mx-auto" style={{ maxHeight: '400px' }}>
-                    Your browser does not support the video tag.
-                  </video>
-                </div>
-                <Button onClick={async () => {
-                  try {
-                    const res = await ads.downloadFinal(id);
-                    if (res.url) window.open(res.url, '_blank');
-                  } catch (err) {
-                    setError(err.message);
-                  }
-                }}>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                  </svg>
-                  Download Video
+                <Button onClick={handlePushToApp} loading={pushing} disabled={!selectedAppId} size="sm">
+                  Push
                 </Button>
               </div>
-            ) : (
-              <Button onClick={handleGenerateVideo} loading={actionLoading}>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-                </svg>
-                Generate Video
-              </Button>
-            )}
+              {pushedApps.length > 0 && (
+                <div className="mt-3">
+                  <p className={`text-xs font-medium mb-1 ${c(dark ? 'dark' : 'light').textMuted}`}>Already pushed to:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {pushedApps.map(pa => (
+                      <span key={pa.push_id} className={`text-xs px-2 py-1 rounded-full ${
+                        dark ? 'bg-emerald-500/10 text-emerald-300' : 'bg-emerald-50 text-emerald-700'
+                      }`}>
+                        {pa.app_name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </SectionCard>
           </div>
         )}
 

@@ -30,12 +30,18 @@ const features = [
     desc: 'Automatically generate stunning video ads from your content. No editing skills required.',
     image: 'M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z',
   },
+  {
+    icon: 'M10.5 21l5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 016-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C11.176 10.658 7.69 15.08 3 17.502m9.334-12.138c.896.061 1.785.147 2.666.257m-4.589 8.495a18.023 18.023 0 01-3.827-5.802',
+    title: 'Multi-Language Support',
+    desc: 'Target ads to specific languages per city. Generate separate videos for each language with custom prompts.',
+    image: 'M10.5 21l5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 016-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C11.176 10.658 7.69 15.08 3 17.502m9.334-12.138c.896.061 1.785.147 2.666.257m-4.589 8.495a18.023 18.023 0 01-3.827-5.802',
+  },
 ];
 
 const steps = [
-  { num: '01', title: 'Create Your Campaign', desc: 'Set your target area, define your audience, and upload your creative assets in minutes.' },
-  { num: '02', title: 'Review & Approve', desc: 'Our team reviews your campaign for quality. Get feedback and iterate until it\'s perfect.' },
-  { num: '03', title: 'Launch & Track', desc: 'Go live and monitor performance in real-time. Optimize on the fly with detailed analytics.' },
+  { num: '01', title: 'Create Your Campaign', desc: 'Set your target area, define your audience, select languages, and upload your creative assets in minutes.' },
+  { num: '02', title: 'Review & Approve', desc: 'Our team reviews your campaign for quality. Get feedback, customize prompts, and iterate until it\'s perfect.' },
+  { num: '03', title: 'Generate & Launch', desc: 'AI generates videos in each selected language. Go live and monitor performance in real-time.' },
 ];
 
 export default function Landing() {
@@ -79,6 +85,12 @@ export default function Landing() {
               </button>
               <Link to={ROUTES.LOGIN} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 ${c(dark ? 'dark' : 'light').btnGhost}`}>Sign In</Link>
               <Link to={ROUTES.REGISTER} className="px-5 py-2 rounded-xl text-sm font-semibold text-black bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 transition-all duration-300 shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30">Get Started</Link>
+              <Link to={ROUTES.DEVELOPER_LOGIN} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-300 border ${dark ? 'border-neutral-700 text-neutral-400 hover:text-amber-300 hover:border-amber-500/30' : 'border-stone-200 text-stone-500 hover:text-amber-700 hover:border-amber-300'}`}>
+                <svg className="w-3.5 h-3.5 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                </svg>
+                Developers
+              </Link>
             </div>
           </div>
         </div>
@@ -197,7 +209,7 @@ export default function Landing() {
             </p>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+          <div className="grid grid-cols-5 gap-4">
             {features.map((f, i) => (
               <div key={i}
                 className={`group rounded-2xl p-6 sm:p-8 transition-all duration-500 animate-fade-in-up ${
@@ -279,6 +291,7 @@ export default function Landing() {
                   { label: 'Real-time campaign analytics dashboard', checked: true },
                   { label: 'Multi-city geo-targeting with heat maps', checked: true },
                   { label: 'AI-powered video ad generation', checked: true },
+                  { label: 'Multi-language ad targeting & video generation', checked: true },
                   { label: 'Client-manager collaboration & review workflow', checked: true },
                 ].map((item, i) => (
                   <li key={i} className="flex items-center gap-3 text-sm animate-fade-in-up" style={{ animationDelay: `${300 + i * 100}ms` }}>

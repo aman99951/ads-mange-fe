@@ -28,6 +28,7 @@ export default function AdDetail() {
   const [iterationModal, setIterationModal] = useState(false);
   const [iterationFeedback, setIterationFeedback] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
+  const [langVideoUrls, setLangVideoUrls] = useState({});
 
   useEffect(() => {
     if (ad?.final_asset) {
@@ -38,6 +39,21 @@ export default function AdDetail() {
       setVideoUrl('');
     }
   }, [ad?.final_asset, id]);
+
+  useEffect(() => {
+    if (ad?.language_assets?.length > 0) {
+      const urls = {};
+      Promise.all(ad.language_assets
+        .filter(a => a.asset && a.status === 'completed')
+        .map(async (a) => {
+          try {
+            const res = await ads.downloadFinal(id, a.id);
+            if (res.url) urls[a.language] = res.url;
+          } catch {}
+        })
+      ).then(() => setLangVideoUrls(urls));
+    }
+  }, [ad?.language_assets, id]);
 
   const handleSubmit = async () => {
     setActionLoading(true);
@@ -65,9 +81,9 @@ export default function AdDetail() {
     }
   };
 
-  const handleDownload = async () => {
+  const handleDownload = async (assetId) => {
     try {
-      const res = await ads.downloadFinal(id);
+      const res = await ads.downloadFinal(id, assetId);
       if (res.url) window.open(res.url, '_blank');
     } catch (err) {
       setError(err.message);
@@ -132,7 +148,7 @@ export default function AdDetail() {
         <ErrorAlert message={error} onDismiss={() => setError('')} />
 
         {/* Info Cards Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 mb-8 animate-fade-in-up animate-delay-200">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-8 animate-fade-in-up animate-delay-200">
           <SectionCard title="Target Areas">
             {ad.target_areas?.length > 0 ? (
               <div className="space-y-2">
@@ -172,6 +188,33 @@ export default function AdDetail() {
               </div>
             ) : (
               <p className={`text-sm transition-colors duration-500 ${c(dark ? 'dark' : 'light').textMuted}`}>No audience selected</p>
+            )}
+          </SectionCard>
+
+          <SectionCard title="Languages">
+            {ad.languages?.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {ad.languages.map((lang) => (
+                  <span key={lang.id} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-300 ${
+                    dark ? 'bg-neutral-800/60 border border-neutral-700/50 text-neutral-300' : 'bg-stone-100 border border-stone-200 text-stone-600'
+                  }`}>
+                    {lang.name}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className={`text-sm transition-colors duration-500 ${c(dark ? 'dark' : 'light').textMuted}`}>No languages selected</p>
+            )}
+          </SectionCard>
+
+          <SectionCard title="Schedule">
+            {ad.scheduled_start || ad.scheduled_end ? (
+              <div className="space-y-1 text-xs">
+                {ad.scheduled_start && <p className={dark ? 'text-neutral-400' : 'text-stone-500'}>Start: {formatDate(ad.scheduled_start)}</p>}
+                {ad.scheduled_end && <p className={dark ? 'text-neutral-400' : 'text-stone-500'}>End: {formatDate(ad.scheduled_end)}</p>}
+              </div>
+            ) : (
+              <p className={`text-sm transition-colors duration-500 ${c(dark ? 'dark' : 'light').textMuted}`}>No schedule set</p>
             )}
           </SectionCard>
         </div>
@@ -223,22 +266,29 @@ export default function AdDetail() {
           </div>
         )}
 
-        {/* Generated Video */}
-        {ad.final_asset && videoUrl && (
+        {/* Generated Videos by Language */}
+        {ad.language_assets?.length > 0 && ad.language_assets.some(a => a.status === 'completed') && (
           <div className="animate-fade-in-up animate-delay-300">
-            <SectionCard title="Generated Video" className="mb-8">
-              <div className="space-y-4">
-                <div className="rounded-xl overflow-hidden border border-amber-500/10 shadow-lg">
-                  <video src={videoUrl} controls className="w-full max-w-2xl mx-auto" style={{ maxHeight: '400px' }}>
-                    Your browser does not support the video tag.
-                  </video>
-                </div>
-                <Button onClick={handleDownload}>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                  </svg>
-                  Download Video
-                </Button>
+            <SectionCard title="Generated Videos" className="mb-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {ad.language_assets.filter(a => a.status === 'completed' && a.asset).map((asset) => (
+                  <div key={asset.id} className={`rounded-xl p-4 border transition-all duration-300 ${
+                    dark ? 'bg-neutral-800/40 border-neutral-700/50' : 'bg-stone-50 border-stone-200'
+                  }`}>
+                    <h4 className={`text-sm font-bold mb-3 ${c(dark ? 'dark' : 'light').text}`}>{asset.language_name}</h4>
+                    <div className="rounded-lg overflow-hidden border border-amber-500/10 mb-3">
+                      <video src={langVideoUrls[asset.language]} controls className="w-full max-h-48 object-contain bg-black/10">
+                        Your browser does not support the video tag.
+                      </video>
+                    </div>
+                    <Button size="sm" onClick={() => handleDownload(asset.id)}>
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                      </svg>
+                      Download
+                    </Button>
+                  </div>
+                ))}
               </div>
             </SectionCard>
           </div>

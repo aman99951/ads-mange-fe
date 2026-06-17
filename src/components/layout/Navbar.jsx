@@ -16,6 +16,11 @@ const MANAGER_NAV = [
   { path: '/manager/target-areas', label: 'Target Areas', icon: 'M9 6.75V15m6-6v8.25m.503 3.498l4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 00-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0z' },
 ];
 
+const DEVELOPER_NAV = [
+  { path: '/developer/dashboard', label: 'Dashboard', icon: 'M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25' },
+  { path: '/developer/playground', label: 'API Playground', icon: 'M14.25 9.75L16.5 12l-2.25 2.25m-4.5 0L7.5 12l2.25-2.25M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z' },
+];
+
 function NavLink({ item, currentPath, dark, onClick }) {
   const isActive = currentPath === item.path || (item.path !== '/' && currentPath.startsWith(item.path));
 
@@ -43,13 +48,17 @@ export default function Navbar({ user, onLogout }) {
   const location = useLocation();
   const { dark } = useTheme();
   const isManager = user?.role === 'manager';
-  const navItems = isManager ? MANAGER_NAV : CLIENT_NAV;
+  const isDeveloper = user?.role === 'developer';
+  const navItems = isManager ? MANAGER_NAV : isDeveloper ? DEVELOPER_NAV : CLIENT_NAV;
+  const homePath = isManager ? '/manager/dashboard' : isDeveloper ? '/developer/dashboard' : '/dashboard';
+  const logoutPath = isManager ? '/manager' : isDeveloper ? '/developer' : '/login';
+  const displayName = isDeveloper ? (user?.company_name || 'Developer') : (user?.name || user?.mobile);
 
   const handleLogout = () => {
     sessionStorage.removeItem('access');
     sessionStorage.removeItem('user');
     onLogout();
-    navigate(isManager ? '/manager' : '/login');
+    window.location.href = logoutPath;
   };
 
   return (
@@ -58,7 +67,7 @@ export default function Navbar({ user, onLogout }) {
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center gap-1 sm:gap-2">
             <button
-              onClick={() => navigate(isManager ? '/manager/dashboard' : '/dashboard')}
+              onClick={() => navigate(homePath)}
               className={`inline-flex items-center gap-2.5 px-3 py-2 rounded-xl text-base font-bold tracking-tight mr-2 sm:mr-4 transition-all duration-300 hover-lift ${t('text')(dark)}`}
             >
               <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-500 ${t('logo')(dark)}`}>
@@ -87,7 +96,7 @@ export default function Navbar({ user, onLogout }) {
                 {(user?.name || 'U').charAt(0).toUpperCase()}
               </div>
               <span className={`text-xs font-medium transition-colors duration-500 ${t('textDim')(dark)}`}>
-                {user?.name || user?.mobile}
+                {displayName}
               </span>
             </div>
             <button
