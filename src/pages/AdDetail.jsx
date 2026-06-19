@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { useAd } from '../hooks/useAds';
-import { ads } from '../services/api';
+import { ads, developerApps } from '../services/api';
 import AppLayout from '../components/layout/AppLayout';
 import ErrorAlert from '../components/layout/ErrorAlert';
 import { DetailSkeleton } from '../components/layout/LoadingSkeleton';
@@ -27,6 +27,10 @@ export default function AdDetail() {
   const [error, setError] = useState('');
   const [iterationModal, setIterationModal] = useState(false);
   const [iterationFeedback, setIterationFeedback] = useState('');
+  const [devApps, setDevApps] = useState([]);
+  const [pushedApps, setPushedApps] = useState([]);
+  const [selectedAppId, setSelectedAppId] = useState('');
+  const [pushing, setPushing] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
   const [langVideoUrls, setLangVideoUrls] = useState({});
 
@@ -39,6 +43,13 @@ export default function AdDetail() {
       setVideoUrl('');
     }
   }, [ad?.final_asset, id]);
+
+  useEffect(() => {
+    if (ad?.id) {
+      developerApps.list().then(setDevApps).catch(() => {});
+      ads.pushedApps(id).then(setPushedApps).catch(() => {});
+    }
+  }, [ad?.id, id]);
 
   useEffect(() => {
     if (ad?.language_assets?.length > 0) {
@@ -64,6 +75,21 @@ export default function AdDetail() {
       setError(err.message);
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handlePushToApp = async () => {
+    if (!selectedAppId) return;
+    setPushing(true);
+    try {
+      await ads.pushToApp(id, parseInt(selectedAppId));
+      const updated = await ads.pushedApps(id);
+      setPushedApps(updated);
+      setSelectedAppId('');
+    } catch (e) {
+      setError(e.message || 'Failed to push ad to app');
+    } finally {
+      setPushing(false);
     }
   };
 
@@ -299,6 +325,58 @@ export default function AdDetail() {
           <div className="animate-fade-in-up animate-delay-300">
             <SectionCard title="Revision History" className="mb-8">
               <IterationTimeline iterations={ad.iterations} />
+            </SectionCard>
+          </div>
+        )}
+
+        {/* Push to Developer App - Client side */}
+        {ad.status === 'approved' && devApps.length > 0 && (
+          <div className="mb-8 animate-fade-in-up animate-delay-350">
+            <SectionCard title="Push to Developer App">
+              <p className={`text-xs mb-3 ${c(dark ? 'dark' : 'light').textMuted}`}>
+                Your ad has been approved! Push it to a registered developer app to make it available via the public API.
+              </p>
+              <div className="flex items-end gap-3">
+                <div className="flex-1">
+                  <label className={`block text-xs font-medium mb-1 ${c(dark ? 'dark' : 'light').textMuted}`}>Select App</label>
+                  <select value={selectedAppId} onChange={e => setSelectedAppId(e.target.value)}
+                    className={`w-full rounded-lg px-3 py-2 text-sm border transition-colors duration-500 ${
+                      dark ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-white border-stone-300 text-stone-900'
+                    }`}>
+                    <option value="">-- Choose an app --</option>
+                    {devApps.filter(a => a.is_active).map(app => (
+                      <option key={app.id} value={app.id}>
+                        {app.app_name} ({app.app_type}){app.app_url ? ` - ${app.app_url}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {(() => {
+                    const sel = selectedAppId ? devApps.find(a => a.id === Number(selectedAppId)) : null;
+                    return sel?.app_url ? (
+                      <p className={`text-[10px] mt-1 truncate ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
+                        URL: {sel.app_url}
+                      </p>
+                    ) : null;
+                  })()}
+                </div>
+                <Button onClick={handlePushToApp} loading={pushing} disabled={!selectedAppId} size="sm">
+                  Push
+                </Button>
+              </div>
+              {pushedApps.length > 0 && (
+                <div className="mt-3">
+                  <p className={`text-xs font-medium mb-1 ${c(dark ? 'dark' : 'light').textMuted}`}>Already pushed to:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {pushedApps.map(pa => (
+                      <span key={pa.push_id} className={`text-xs px-2 py-1 rounded-full ${
+                        dark ? 'bg-emerald-500/10 text-emerald-300' : 'bg-emerald-50 text-emerald-700'
+                      }`}>
+                        {pa.app_name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </SectionCard>
           </div>
         )}

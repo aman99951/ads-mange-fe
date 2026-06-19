@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { useAd } from '../hooks/useAds';
 import { ads } from '../services/api';
-import { developerApps } from '../services/api';
 import AppLayout from '../components/layout/AppLayout';
 import ErrorAlert from '../components/layout/ErrorAlert';
 import { DetailSkeleton } from '../components/layout/LoadingSkeleton';
@@ -16,95 +15,6 @@ import { colors } from '../config/theme';
 
 const c = (k) => colors[k];
 
-function LanguageVideoCard({ lang, asset, adId, dark, onGenerate, generating }) {
-  const [prompt, setPrompt] = useState(asset?.prompt || '');
-  const [videoUrl, setVideoUrl] = useState('');
-
-  useEffect(() => {
-    if (asset?.asset) {
-      ads.downloadFinal(adId, asset.id).then(res => {
-        if (res.url) setVideoUrl(res.url);
-      }).catch(() => {});
-    }
-  }, [asset?.asset, asset?.id, adId]);
-
-  return (
-    <div className={`rounded-xl p-5 border transition-all duration-300 ${
-      dark ? 'bg-neutral-800/40 border-neutral-700/50' : 'bg-stone-50 border-stone-200'
-    }`}>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${
-            asset?.status === 'completed' ? 'bg-emerald-500' :
-            asset?.status === 'failed' ? 'bg-red-500' :
-            asset?.status === 'generating' ? 'bg-amber-500 animate-pulse' :
-            'bg-neutral-400'
-          }`} />
-          <h4 className={`text-sm font-bold ${c(dark ? 'dark' : 'light').text}`}>{lang.name}</h4>
-        </div>
-        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-          dark ? 'bg-neutral-700/50 text-neutral-400' : 'bg-white text-stone-500 border border-stone-200'
-        }`}>{asset?.status || 'pending'}</span>
-      </div>
-
-      <div className="mb-3 space-y-2">
-        <Input textarea value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder={`Prompt for ${lang.name} video...`}
-          className="text-xs"
-        />
-      </div>
-
-      {asset?.status === 'generating' && (
-        <div className={`flex items-center gap-3 p-3 rounded-lg mb-3 ${dark ? 'bg-amber-500/5' : 'bg-amber-50'}`}>
-          <svg className="w-5 h-5 animate-spin text-amber-500" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-          <span className={`text-xs font-medium ${dark ? 'text-amber-300' : 'text-amber-700'}`}>Generating video...</span>
-        </div>
-      )}
-
-      {asset?.status === 'failed' && (
-        <div className={`p-3 rounded-lg text-xs mb-3 ${dark ? 'bg-red-500/10 text-red-300' : 'bg-red-50 text-red-700'}`}>
-          {asset.error || 'Generation failed'}
-        </div>
-      )}
-
-      {asset?.status === 'completed' && videoUrl && (
-        <div className="space-y-3 mb-3">
-          <div className="rounded-lg overflow-hidden border border-amber-500/10">
-            <video src={videoUrl} controls className="w-full max-h-48 object-contain bg-black/10">
-              Your browser does not support the video tag.
-            </video>
-          </div>
-          <Button size="sm" onClick={async () => {
-            try {
-              const res = await ads.downloadFinal(adId, asset.id);
-              if (res.url) window.open(res.url, '_blank');
-            } catch (err) {}
-          }}>
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-            </svg>
-            Download
-          </Button>
-        </div>
-      )}
-
-      <div className="pt-3 border-t" style={{ borderColor: dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)' }}>
-        <Button className="w-full" size="sm" onClick={() => onGenerate(lang.id, prompt)}
-          disabled={generating}>
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-          </svg>
-          {asset?.status === 'completed' ? 'Regenerate' : 'Generate'}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 export default function ManagerAdDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -114,75 +24,6 @@ export default function ManagerAdDetail() {
   const [actionLoading, setActionLoading] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
-  const [generatingLangs, setGeneratingLangs] = useState(new Set());
-  const [languageAssets, setLanguageAssets] = useState([]);
-  const [devApps, setDevApps] = useState([]);
-  const [pushedApps, setPushedApps] = useState([]);
-  const [selectedAppId, setSelectedAppId] = useState('');
-  const [pushing, setPushing] = useState(false);
-  const pollRef = useRef(null);
-
-  useEffect(() => {
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, []);
-
-  useEffect(() => {
-    if (ad?.id) {
-      ads.languageAssetsList(id).then(setLanguageAssets).catch(() => {});
-      developerApps.list().then(setDevApps).catch(() => {});
-      ads.pushedApps(id).then(setPushedApps).catch(() => {});
-    }
-  }, [ad?.id, id]);
-
-  const getAssetForLang = (langId) =>
-    languageAssets.find(a => a.language === langId);
-
-  const isAnyGenerating = () =>
-    languageAssets.some(a => a.status === 'generating');
-
-  useEffect(() => {
-    if (isAnyGenerating()) {
-      pollRef.current = setInterval(async () => {
-        try {
-          const updated = await ads.languageAssetsList(id);
-          setLanguageAssets(updated);
-          if (!updated.some(a => a.status === 'generating')) {
-            clearInterval(pollRef.current);
-            pollRef.current = null;
-            await refetch();
-          }
-        } catch { /* ignore */ }
-      }, 3000);
-      return () => { if (pollRef.current) clearInterval(pollRef.current); };
-    }
-  }, [id, ad?.id]);
-
-  const handleGenerate = async (languageId, prompt) => {
-    setError('');
-    try {
-      await ads.generateLanguageVideo(id, languageId, prompt);
-      setGeneratingLangs(prev => new Set(prev).add(languageId));
-      const assets = await ads.languageAssetsList(id);
-      setLanguageAssets(assets);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const handlePushToApp = async () => {
-    if (!selectedAppId) return;
-    setPushing(true);
-    try {
-      await ads.pushToApp(id, parseInt(selectedAppId));
-      const updated = await ads.pushedApps(id);
-      setPushedApps(updated);
-      setToast({ show: true, message: 'Ad pushed to developer app successfully!', type: 'success' });
-    } catch (e) {
-      setError(e.message || 'Failed to push ad to app');
-    } finally {
-      setPushing(false);
-    }
-  };
 
   const handleApprove = async () => {
     setActionLoading(true);
@@ -223,7 +64,7 @@ export default function ManagerAdDetail() {
       <AppLayout fullWidth>
         <div className="max-w-[1400px] mx-auto text-center py-12 animate-fade-in-up">
           <p className={`text-sm ${dark ? 'text-red-400' : 'text-red-600'}`}>{fetchError || error}</p>
-          <Button variant="ghost" className="mt-4" onClick={() => navigate('/manager/dashboard')}>Back to Dashboard</Button>
+          <Button variant="ghost" className="mt-4" onClick={() => navigate('/manager/campaigns')}>Back to Campaigns</Button>
         </div>
       </AppLayout>
     );
@@ -238,15 +79,14 @@ export default function ManagerAdDetail() {
       <div className="max-w-[1400px] mx-auto">
         {/* Back button */}
         <button
-          onClick={() => navigate('/manager/dashboard')}
+          onClick={() => navigate('/manager/campaigns')}
           className={`inline-flex items-center gap-1.5 text-xs font-medium mb-6 transition-all duration-300 group animate-fade-in-up ${
             dark ? 'text-neutral-500 hover:text-amber-400' : 'text-amber-700 hover:text-amber-800'
           }`}
         >
           <svg className="w-4 h-4 transition-transform duration-300 group-hover:-translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-          </svg>
-          Back to Dashboard
+          </svg>                Back to Campaigns
         </button>
 
         {/* Title section */}
@@ -389,79 +229,31 @@ export default function ManagerAdDetail() {
           </div>
         )}
 
-        {/* Per-Language Video Generation */}
-        {ad.status === 'approved' && ad.languages?.length > 0 && (
+        {/* Generate in Studio */}
+        {ad.status === 'approved' && (
           <div className="mb-8 animate-fade-in-up animate-delay-300">
-            <SectionCard title="Video Generation by Language">
-              <p className={`text-xs mb-4 transition-colors duration-500 ${c(dark ? 'dark' : 'light').textMuted}`}>
-                Prompt is optional. Leave empty to use ad content, or write a custom prompt to improve the video.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {ad.languages.map((lang) => (
-                  <LanguageVideoCard
-                    key={lang.id}
-                    lang={lang}
-                    asset={getAssetForLang(lang.id)}
-                    adId={id}
-                    dark={dark}
-                    onGenerate={handleGenerate}
-                    generating={generatingLangs.has(lang.id)}
-                  />
-                ))}
-              </div>
-            </SectionCard>
-          </div>
-        )}
-
-        {/* Push to Developer App */}
-        {ad.status === 'approved' && devApps.length > 0 && (
-          <div className="mb-8 animate-fade-in-up animate-delay-350">
-            <SectionCard title="Push to Developer App">
-              <p className={`text-xs mb-3 ${c(dark ? 'dark' : 'light').textMuted}`}>
-                Push this approved ad to registered developer apps. Developers will see it via the public API.
-              </p>
-              <div className="flex items-end gap-3">
-                <div className="flex-1">
-                  <label className={`block text-xs font-medium mb-1 ${c(dark ? 'dark' : 'light').textMuted}`}>Select App</label>
-                  <select value={selectedAppId} onChange={e => setSelectedAppId(e.target.value)}
-                    className={`w-full rounded-lg px-3 py-2 text-sm border transition-colors duration-500 ${
-                      dark ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-white border-stone-300 text-stone-900'
-                    }`}>
-                    <option value="">-- Choose an app --</option>
-                    {devApps.filter(a => a.is_active).map(app => (
-                      <option key={app.id} value={app.id}>
-                        {app.app_name} ({app.app_type}){app.app_url ? ` - ${app.app_url}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {(() => {
-                    const sel = selectedAppId ? devApps.find(a => a.id === Number(selectedAppId)) : null;
-                    return sel?.app_url ? (
-                      <p className={`text-[10px] mt-1 truncate ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
-                        URL: {sel.app_url}
-                      </p>
-                    ) : null;
-                  })()}
+            <div className={`rounded-2xl p-6 border transition-all duration-300 ${
+              dark ? 'bg-gradient-to-br from-neutral-900/80 to-neutral-900/40 border-purple-500/10' : 'bg-white border-stone-200 shadow-sm'
+            }`}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-1 h-8 rounded-full bg-gradient-to-b from-purple-500 to-pink-500" />
+                <div>
+                  <h3 className={`text-sm font-bold ${c(dark ? 'dark' : 'light').text}`}>Generate Video in Creative Studio</h3>
+                  <p className={`text-[10px] mt-0.5 ${c(dark ? 'dark' : 'light').textMuted}`}>
+                    Use AI to create professional images & videos with full control over dimensions, style, and effects
+                  </p>
                 </div>
-                <Button onClick={handlePushToApp} loading={pushing} disabled={!selectedAppId} size="sm">
-                  Push
-                </Button>
               </div>
-              {pushedApps.length > 0 && (
-                <div className="mt-3">
-                  <p className={`text-xs font-medium mb-1 ${c(dark ? 'dark' : 'light').textMuted}`}>Already pushed to:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {pushedApps.map(pa => (
-                      <span key={pa.push_id} className={`text-xs px-2 py-1 rounded-full ${
-                        dark ? 'bg-emerald-500/10 text-emerald-300' : 'bg-emerald-50 text-emerald-700'
-                      }`}>
-                        {pa.app_name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </SectionCard>
+              <Button
+                onClick={() => navigate('/manager/create-creative', { state: { prompt: ad.description || ad.text_content || '', languages: ad.languages || [] } })}
+                className="w-full !py-3.5 !text-sm !font-bold !rounded-2xl"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.994 15.994 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.151 1.151 0 00-1.597-1.597L14.146 6.32a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42" />
+                </svg>
+                Open Creative Studio
+              </Button>
+            </div>
           </div>
         )}
 

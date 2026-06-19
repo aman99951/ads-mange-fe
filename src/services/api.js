@@ -93,6 +93,21 @@ export const ads = {
   languageAssetsList: (id) => request(`/ads/${id}/language_assets_list/`),
   pushToApp: (id, appId) => request(`/ads/${id}/push_to_app/`, { method: 'POST', body: JSON.stringify({ app_id: appId }) }),
   pushedApps: (id) => request(`/ads/${id}/pushed_apps/`),
+  generateImage: (data) => request('/ads/generate_image/', { method: 'POST', body: JSON.stringify(data) }),
+  generateVideoClip: (data) => request('/ads/generate_video_clip/', { method: 'POST', body: JSON.stringify(data) }),
+  enhancePrompt: (data) => request('/enhance-prompt/', { method: 'POST', body: JSON.stringify(data) }),
+  createCreative: (data) => {
+    const hasFile = data.image_file instanceof File || data.video_file instanceof File;
+    if (hasFile) {
+      const form = new FormData();
+      Object.entries(data).forEach(([k, v]) => {
+        if (Array.isArray(v)) v.forEach((item) => form.append(k, item));
+        else if (v !== undefined && v !== null) form.append(k, v);
+      });
+      return request('/ads/create_creative/', { method: 'POST', body: form });
+    }
+    return request('/ads/create_creative/', { method: 'POST', body: JSON.stringify(data) });
+  },
 };
 
 export const developerAds = {

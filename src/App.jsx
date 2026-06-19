@@ -12,8 +12,10 @@ import CreateAd from './pages/CreateAd';
 import AdDetail from './pages/AdDetail';
 import ManagerLogin from './pages/ManagerLogin';
 import ManagerDashboard from './pages/ManagerDashboard';
+import ManagerCampaigns from './pages/ManagerCampaigns';
 import ManagerAdDetail from './pages/ManagerAdDetail';
 import ManagerTargetAreas from './pages/ManagerTargetAreas';
+import ManagerCreateCreative from './pages/ManagerCreateCreative';
 import DeveloperLogin from './pages/DeveloperLogin';
 import DeveloperRegister from './pages/DeveloperRegister';
 import DeveloperDashboard from './pages/DeveloperDashboard';
@@ -58,8 +60,11 @@ function AppContent() {
 
           <Route path={ROUTES.MANAGER_LOGIN} element={isManager ? <Navigate to={ROUTES.MANAGER_DASHBOARD} replace /> : <ManagerLogin onLogin={login} />} />
           <Route path={ROUTES.MANAGER_DASHBOARD} element={isManager ? <ManagerDashboard /> : <Navigate to={ROUTES.MANAGER_LOGIN} replace />} />
+          <Route path={ROUTES.MANAGER_CAMPAIGNS} element={isManager ? <ManagerCampaigns /> : <Navigate to={ROUTES.MANAGER_LOGIN} replace />} />
+          <Route path={ROUTES.MANAGER_CAMPAIGN_DETAIL} element={isManager ? <ManagerAdDetail /> : <Navigate to={ROUTES.MANAGER_LOGIN} replace />} />
           <Route path={ROUTES.MANAGER_AD_DETAIL} element={isManager ? <ManagerAdDetail /> : <Navigate to={ROUTES.MANAGER_LOGIN} replace />} />
           <Route path={ROUTES.MANAGER_TARGET_AREAS} element={isManager ? <ManagerTargetAreas /> : <Navigate to={ROUTES.MANAGER_LOGIN} replace />} />
+          <Route path={ROUTES.MANAGER_CREATE_CREATIVE} element={isManager ? <ManagerCreateCreative /> : <Navigate to={ROUTES.MANAGER_LOGIN} replace />} />
 
           <Route path={ROUTES.DEVELOPER_LOGIN} element={isDeveloper ? <Navigate to={ROUTES.DEVELOPER_DASHBOARD} replace /> : <DeveloperLogin onLogin={login} />} />
           <Route path={ROUTES.DEVELOPER_REGISTER} element={isDeveloper ? <Navigate to={ROUTES.DEVELOPER_DASHBOARD} replace /> : <DeveloperRegister onRegister={login} />} />
