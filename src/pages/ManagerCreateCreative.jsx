@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { colors } from '../config/theme';
-import { ads } from '../services/api';
+import { ads, managerSettings } from '../services/api';
 import AppLayout from '../components/layout/AppLayout';
 import ErrorAlert from '../components/layout/ErrorAlert';
 import Button from '../components/ui/Button';
@@ -792,7 +792,7 @@ function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError 
           className="w-full !py-3.5 !text-sm !font-bold !rounded-2xl"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 8.25H7.5a2.25 2.25 0 00-2.25 2.25v9a2.25 2.25 0 002.25 2.25h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25H15M9 12l3 3m0 0l3-3m-3 3V2.25" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 8.25H7.5a2.25 2.25 0 00-2.25 2.25v9a2.25 2.25 0 002.25 2.25h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25H15M9 12l3 3m0 0l3-3m-3 3V2.25\" />
           </svg>
           {merging
             ? `Merging... ${mergeProgress}%`
@@ -841,6 +841,18 @@ function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError 
   );
 }
 
+const IMAGE_MODELS_DEFAULT = [
+  { id: 'gemini-2.5-flash-image', name: 'Nano Banana', credit_cost: 2, description: 'Fast, efficient (Gemini 2.5 Flash)', provider: 'google', api_type: 'interactions' },
+  { id: 'gemini-3.1-flash-image', name: 'Nano Banana 2', credit_cost: 3, description: 'High-efficiency (Gemini 3.1 Flash)', provider: 'google', api_type: 'interactions' },
+  { id: 'gemini-3-pro-image', name: 'Nano Banana Pro', credit_cost: 5, description: 'Professional quality', provider: 'google', is_premium: true, api_type: 'interactions' },
+];
+
+const VIDEO_MODELS_DEFAULT = [
+  { id: 'veo-3.1-generate-preview', name: 'Veo 3.1', credit_cost: 8, description: 'Latest cinematic video generation' },
+  { id: 'veo-3.0-generate-001', name: 'Veo 3.0', credit_cost: 5, description: 'High-quality video generation' },
+  { id: 'veo-3.0-fast-001', name: 'Veo 3.0 Fast', credit_cost: 4, description: 'Faster video generation' },
+];
+
 export default function ManagerCreateCreative() {
   const { dark } = useTheme();
   const navigate = useNavigate();
@@ -864,6 +876,70 @@ export default function ManagerCreateCreative() {
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [showNegative, setShowNegative] = useState(false);
   const [error, setError] = useState('');
+  // Model selection state
+  const [imageModels, setImageModels] = useState(IMAGE_MODELS_DEFAULT);
+  const [videoModels, setVideoModels] = useState(VIDEO_MODELS_DEFAULT);
+  const [selectedImageModel, setSelectedImageModel] = useState(IMAGE_MODELS_DEFAULT[0].id); // Nano Banana
+  const [selectedVideoModel, setSelectedVideoModel] = useState(VIDEO_MODELS_DEFAULT[1].id);
+  // Google API daily usage quota (real credits)
+  const [googleApiQuota, setGoogleApiQuota] = useState(null);
+  // Manager's own API key
+  const [showApiSettings, setShowApiSettings] = useState(false);
+  const [myApiKey, setMyApiKey] = useState('');
+  const [apiKeySaving, setApiKeySaving] = useState(false);
+
+  // Fetch models and Google API usage stats on mount
+  useEffect(() => {
+    fetchModels();
+    fetchUsageStats();
+    fetchMyApiKey();
+  }, []);
+
+  const fetchUsageStats = async () => {
+    try {
+      const data = await ads.getUsageStats();
+      if (data?.daily_limit) setGoogleApiQuota(data);
+    } catch (err) {
+      // Ignore if API unavailable
+    }
+  };
+
+  const fetchMyApiKey = async () => {
+    try {
+      const data = await managerSettings.getApiKey();
+      if (data?.api_key) setMyApiKey(data.api_key);
+    } catch (err) {
+      // Ignore
+    }
+  };
+
+  const handleSaveApiKey = async () => {
+    setApiKeySaving(true);
+    try {
+      await managerSettings.setApiKey(myApiKey);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setApiKeySaving(false);
+    }
+  };
+
+  const fetchModels = async () => {
+    try {
+      const data = await ads.getModels();
+      if (data?.image_models?.length) setImageModels(data.image_models);
+      if (data?.video_models?.length) setVideoModels(data.video_models);
+    } catch (err) {
+      // Use defaults if API fails
+    }
+  };
+
+  const selectedModel = mediaType === 'image' ? selectedImageModel : selectedVideoModel;
+  const setSelectedModel = (id) => {
+    if (mediaType === 'image') setSelectedImageModel(id);
+    else setSelectedVideoModel(id);
+  };
+
   const handleLanguageSelect = (lang) => {
     // If same language clicked, deselect
     if (selectedLanguage?.id === lang.id) {
@@ -913,23 +989,31 @@ export default function ManagerCreateCreative() {
         const result = await ads.generateImage({
           prompt: prompt.trim(),
           aspect_ratio: aspectRatio,
+          model: selectedImageModel,
         });
         setGeneratedAssets(prev => [...prev, {
           type: 'image', url: result.url, prompt: prompt.trim(),
-          width, height, style, id: Date.now()
+          width, height, style, model: result.model_used, id: Date.now()
         }]);
+        // Refresh Google API quota after generation
+        fetchUsageStats();
       } else {
         const result = await ads.generateVideoClip({
           prompt: prompt.trim(),
           aspect_ratio: aspectRatio,
           duration_seconds: duration,
+          model: selectedVideoModel,
         });
         setGeneratedAssets(prev => [...prev, {
           type: 'video', url: result.url, prompt: prompt.trim(),
-          width, height, duration, id: Date.now()
+          width, height, duration, model: result.model_used, id: Date.now()
         }]);
+        // Refresh Google API quota after generation
+        fetchUsageStats();
       }
     } catch (err) {
+      if (err.data?.google_api_quota) setGoogleApiQuota(err.data.google_api_quota);
+      else fetchUsageStats();
       setError(err.message);
     } finally {
       setGenerating(false);
@@ -1002,6 +1086,62 @@ export default function ManagerCreateCreative() {
                 Dashboard
               </Button>
             </div>
+
+            {/* Google API Quota — only shows REAL data from Google's responses */}
+            {googleApiQuota?.exhausted && (
+              <div className={`mb-6 rounded-2xl p-4 border ${
+                dark ? 'bg-red-500/10 border-red-500/30' : 'bg-red-50 border-red-300'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg bg-red-500/20">
+                    <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <div className={`text-xs font-medium ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>
+                      Google API Response
+                    </div>
+                    <div className={`text-sm font-mono ${dark ? 'text-red-400' : 'text-red-600'}`}>
+                      {googleApiQuota.error || 'Quota exceeded'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {googleApiQuota?.google_rate_limit?.hasOwnProperty('x-ratelimit-remaining-requests') && !googleApiQuota?.exhausted && (
+              <div className={`mb-6 rounded-2xl p-4 border transition-all duration-300 ${
+                dark ? 'bg-gradient-to-r from-emerald-500/8 to-amber-500/8 border-emerald-500/20' : 'bg-gradient-to-r from-emerald-50 to-amber-50 border-emerald-200'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                    (googleApiQuota.google_rate_limit['x-ratelimit-remaining-requests'] || 0) <= 5 ? 'bg-amber-500/15' : 'bg-emerald-500/15'
+                  }`}>
+                    <svg className={`w-5 h-5 ${
+                      (googleApiQuota.google_rate_limit['x-ratelimit-remaining-requests'] || 0) <= 5 ? 'text-amber-500' : 'text-emerald-500'
+                    }`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <div className={`text-xs font-medium ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>
+                      Google API Quota
+                    </div>
+                    <div className={`text-lg font-bold ${
+                      (googleApiQuota.google_rate_limit['x-ratelimit-remaining-requests'] || 0) <= 5 ? 'text-amber-500' : dark ? 'text-emerald-300' : 'text-emerald-700'
+                    }`}>
+                      {googleApiQuota.google_rate_limit['x-ratelimit-remaining-requests']} req/min
+                      <span className={`text-xs font-normal ml-2 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
+                        · {googleApiQuota.google_rate_limit['x-ratelimit-remaining-tokens']?.toLocaleString()} tokens/min
+                      </span>
+                    </div>
+                    <div className={`text-[10px] mt-0.5 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
+                      From Google API response — updates after each generation
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {mode === 'merge' ? (
               /* ─── Video Merger Mode ─── */
@@ -1089,6 +1229,78 @@ export default function ManagerCreateCreative() {
                 {/* Left Column - Prompt & Settings */}
                 <div className="lg:col-span-3 space-y-5">
                   <ErrorAlert message={error} onDismiss={() => setError('')} />
+
+                  {/* API Settings — manager can use their own Google API key */}
+                  <div className={`rounded-2xl border transition-all duration-300 overflow-hidden ${
+                    dark ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white/90 border-stone-200 shadow-sm'
+                  }`}>
+                    <button
+                      onClick={() => setShowApiSettings(!showApiSettings)}
+                      className={`w-full flex items-center gap-3 px-5 py-3.5 text-sm font-medium transition-colors ${
+                        dark ? 'text-neutral-300 hover:text-neutral-100' : 'text-neutral-700 hover:text-neutral-900'
+                      }`}
+                    >
+                      <svg className={`w-4 h-4 transition-transform ${showApiSettings ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                      </svg>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m0 0a3 3 0 01-3 3m3-3H5.25M5.25 15.75a3 3 0 01-3-3m3 3a3 3 0 013-3m-3 3v6" />
+                      </svg>
+                      <span className="flex-1 text-left">API Settings</span>
+                      <span className={`text-[10px] font-mono ${myApiKey ? (dark ? 'text-emerald-400' : 'text-emerald-600') : (dark ? 'text-neutral-500' : 'text-stone-400')}`}>
+                        {myApiKey ? 'Custom key set' : 'Using default'}
+                      </span>
+                    </button>
+
+                    {showApiSettings && (
+                      <div className={`px-5 pb-4 border-t ${dark ? 'border-neutral-800' : 'border-stone-200'}`}>
+                        <p className={`text-[11px] mt-3 mb-2.5 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
+                          Set your own Google AI API key to use your personal quota instead of the shared workspace key.
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={myApiKey}
+                            onChange={(e) => setMyApiKey(e.target.value)}
+                            placeholder="Enter your Google AI API key..."
+                            className={`flex-1 px-3.5 py-2.5 rounded-xl text-xs font-mono outline-none transition-all duration-200 ${
+                              dark
+                                ? 'bg-neutral-800/80 border border-neutral-700 text-neutral-200 placeholder-neutral-500 focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20'
+                                : 'bg-stone-50/80 border border-stone-300 text-neutral-900 placeholder-neutral-400 focus:border-amber-500 focus:ring-1 focus:ring-amber-500/15'
+                            }`}
+                          />
+                          <button
+                            onClick={handleSaveApiKey}
+                            disabled={apiKeySaving}
+                            className={`px-4 py-2.5 rounded-xl text-xs font-medium transition-all duration-200 flex-shrink-0 ${
+                              apiKeySaving
+                                ? dark ? 'bg-neutral-800 text-neutral-500' : 'bg-stone-100 text-stone-400'
+                                : dark
+                                  ? 'bg-amber-500/15 text-amber-300 border border-amber-500/25 hover:bg-amber-500/25'
+                                  : 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
+                            }`}
+                          >
+                            {apiKeySaving ? 'Saving...' : 'Save'}
+                          </button>
+                          {myApiKey && (
+                            <button
+                              onClick={async () => {
+                                setMyApiKey('');
+                                try { await managerSettings.setApiKey(''); } catch {}
+                              }}
+                              className={`px-3 py-2.5 rounded-xl text-xs font-medium transition-all duration-200 ${
+                                dark
+                                  ? 'text-neutral-500 hover:text-red-400 hover:bg-neutral-800/60'
+                                  : 'text-stone-400 hover:text-red-500 hover:bg-stone-100'
+                              }`}
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Prompt Input */}
                   <div className={`rounded-2xl p-5 border transition-all duration-300 ${
@@ -1194,6 +1406,42 @@ export default function ManagerCreateCreative() {
                     <h3 className={`text-sm font-bold mb-4 ${dark ? 'text-neutral-200' : 'text-neutral-800'}`}>
                       Settings
                     </h3>
+
+                    {/* Model Selector */}
+                    <div className="mb-5">
+                      <div className="flex items-center justify-between mb-2.5">
+                        <label className={`text-xs font-medium ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>
+                          Google AI Model
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(mediaType === 'image' ? imageModels : videoModels).map((m) => {
+                          const isSelected = selectedModel === m.id;
+                          return (
+                            <button
+                              key={m.id}
+                              onClick={() => setSelectedModel(m.id)}
+                              className={`relative text-left px-3 py-2.5 rounded-xl text-xs transition-all duration-200 ${
+                                isSelected
+                                  ? dark
+                                    ? 'bg-amber-500/12 text-amber-300 border-2 border-amber-500/25 shadow-[0_0_10px_rgba(217,160,50,0.06)]'
+                                    : 'bg-amber-50 text-amber-700 border-2 border-amber-200 shadow-sm'
+                                  : dark
+                                    ? 'bg-neutral-800/50 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border border-neutral-800 hover:border-neutral-700'
+                                    : 'bg-stone-50 text-stone-500 hover:bg-stone-100 hover:text-stone-700 border border-stone-200 hover:border-stone-300'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-1">
+                                <span className="font-semibold">{m.name}</span>
+                              </div>
+                              <p className={`text-[9px] mt-0.5 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
+                                {m.description}
+                              </p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
 
                     {/* Dimensions */}
                     <div className="mb-4">

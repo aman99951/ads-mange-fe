@@ -22,7 +22,10 @@ async function request(endpoint, options = {}) {
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || err.error || JSON.stringify(err));
+    const ex = new Error(err.detail || err.error || JSON.stringify(err));
+    ex.data = err;
+    ex.status = res.status;
+    throw ex;
   }
   if (res.status === 204) return null;
   return res.json();
@@ -95,6 +98,8 @@ export const ads = {
   pushedApps: (id) => request(`/ads/${id}/pushed_apps/`),
   generateImage: (data) => request('/ads/generate_image/', { method: 'POST', body: JSON.stringify(data) }),
   generateVideoClip: (data) => request('/ads/generate_video_clip/', { method: 'POST', body: JSON.stringify(data) }),
+  getModels: () => request('/models/'),
+  getUsageStats: () => request('/usage-stats/'),
   enhancePrompt: (data) => request('/enhance-prompt/', { method: 'POST', body: JSON.stringify(data) }),
   createCreative: (data) => {
     const hasFile = data.image_file instanceof File || data.video_file instanceof File;
@@ -113,6 +118,11 @@ export const ads = {
 export const developerAds = {
   list: () => request('/developer/ads/'),
   getDetails: (id) => request(`/developer/ads/${id}/details/`),
+};
+
+export const managerSettings = {
+  getApiKey: () => request('/auth/manager-api-key/'),
+  setApiKey: (apiKey) => request('/auth/manager-api-key/', { method: 'PUT', body: JSON.stringify({ api_key: apiKey }) }),
 };
 
 export const developerApps = {
