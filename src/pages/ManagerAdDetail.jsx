@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { useAd } from '../hooks/useAds';
@@ -24,6 +24,28 @@ export default function ManagerAdDetail() {
   const [actionLoading, setActionLoading] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState('');
+  const fileInputRef = useRef(null);
+
+  const handleUpload = async () => {
+    if (!uploadFile) return;
+    setUploading(true);
+    setError('');
+    setUploadSuccess('');
+    try {
+      await ads.uploadAsset(id, { file: uploadFile });
+      setUploadSuccess('Asset uploaded successfully!');
+      setUploadFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      await refetch();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleApprove = async () => {
     setActionLoading(true);
@@ -163,6 +185,29 @@ export default function ManagerAdDetail() {
             )}
           </SectionCard>
 
+          <SectionCard title="Content Format">
+            {ad.content_type ? (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold uppercase tracking-wide ${
+                    ad.content_type === 'video'
+                      ? dark ? 'bg-purple-500/15 text-purple-300' : 'bg-purple-100 text-purple-700'
+                      : dark ? 'bg-blue-500/15 text-blue-300' : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {ad.content_type === 'video' ? '🎬 Video' : '🖼️ Image'}
+                  </span>
+                </div>
+                {ad.content_size && (
+                  <p className={`text-xs ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>
+                    Size: {ad.content_size}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className={`text-sm ${c(dark ? 'dark' : 'light').textMuted}`}>Not specified</p>
+            )}
+          </SectionCard>
+
           <SectionCard title="Schedule">
             {ad.scheduled_start || ad.scheduled_end ? (
               <div className="space-y-1 text-xs">
@@ -245,7 +290,7 @@ export default function ManagerAdDetail() {
                 </div>
               </div>
               <Button
-                onClick={() => navigate('/manager/create-creative', { state: { prompt: ad.description || ad.text_content || '', languages: ad.languages || [] } })}
+                onClick={() => navigate('/manager/create-creative', { state: { prompt: ad.description || ad.text_content || '', languages: ad.languages || [], mediaType: ad.content_type || 'video', dimensions: ad.content_size || '' } })}
                 className="w-full !py-3.5 !text-sm !font-bold !rounded-2xl"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -254,6 +299,98 @@ export default function ManagerAdDetail() {
                 Open Creative Studio
               </Button>
             </div>
+          </div>
+        )}
+
+        {/* Upload External Asset */}
+        {ad.status === 'approved' && (
+          <div className="mb-8 animate-fade-in-up animate-delay-350">
+            <div className={`rounded-2xl p-6 border transition-all duration-300 ${
+              dark ? 'bg-gradient-to-br from-neutral-900/80 to-neutral-900/40 border-emerald-500/10' : 'bg-white border-stone-200 shadow-sm'
+            }`}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-1 h-8 rounded-full bg-gradient-to-b from-emerald-500 to-teal-500" />
+                <div>
+                  <h3 className={`text-sm font-bold ${c(dark ? 'dark' : 'light').text}`}>Upload External Asset</h3>
+                  <p className={`text-[10px] mt-0.5 ${c(dark ? 'dark' : 'light').textMuted}`}>
+                    Upload a video or image created externally (e.g., Canva, Photoshop)
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,video/*"
+                  onChange={(e) => setUploadFile(e.target.files[0] || null)}
+                  className={`flex-1 text-sm file:mr-3 file:py-2 file:px-4 file:rounded-xl file:text-xs file:font-semibold file:border-0 ${
+                    dark
+                      ? 'text-neutral-300 file:bg-emerald-500/10 file:text-emerald-300'
+                      : 'text-neutral-700 file:bg-emerald-50 file:text-emerald-700'
+                  }`}
+                />
+                <Button onClick={handleUpload} loading={uploading} disabled={!uploadFile || uploading} size="sm">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                  </svg>
+                  Upload
+                </Button>
+              </div>
+              {uploadSuccess && (
+                <p className={`text-xs mt-3 font-medium ${dark ? 'text-emerald-400' : 'text-emerald-600'}`}>{uploadSuccess}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Final Asset Preview */}
+        {(ad.final_asset || ad.language_assets?.some(a => a.status === 'completed' && a.asset)) && (
+          <div className="mb-8 animate-fade-in-up animate-delay-350">
+            <SectionCard title="Uploaded Assets">
+              {ad.final_asset && (
+                <div className="mb-4">
+                  <p className={`text-xs font-semibold mb-2 ${dark ? 'text-emerald-400' : 'text-emerald-700'}`}>Final Asset</p>
+                  {isImageFile(ad.final_asset) ? (
+                    <div className="rounded-xl overflow-hidden border border-amber-500/10">
+                      <img src={ad.final_asset} alt="Final asset" className="max-h-80 w-full object-contain bg-black/10" />
+                    </div>
+                  ) : (
+                    <div className="rounded-xl overflow-hidden border border-amber-500/10 max-w-2xl">
+                      <video src={ad.final_asset} controls className="w-full max-h-96 object-contain bg-black/10">
+                        Your browser does not support the video tag.
+                      </video>
+                    </div>
+                  )}
+                </div>
+              )}
+              {ad.language_assets?.filter(a => a.status === 'completed' && a.asset).length > 0 && (
+                <div>
+                  <p className={`text-xs font-semibold mb-2 ${dark ? 'text-emerald-400' : 'text-emerald-700'}`}>Language Assets</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {ad.language_assets.filter(a => a.status === 'completed' && a.asset).map((asset) => (
+                      <div key={asset.id} className={`rounded-xl p-4 border transition-all duration-300 ${
+                        dark ? 'bg-neutral-800/40 border-neutral-700/50' : 'bg-stone-50 border-stone-200'
+                      }`}>
+                        <h4 className={`text-sm font-bold mb-2 ${dark ? 'text-neutral-200' : 'text-neutral-800'}`}>
+                          {asset.language_name || asset.language}
+                        </h4>
+                        {isImageFile(asset.asset) ? (
+                          <div className="rounded-lg overflow-hidden border border-amber-500/10">
+                            <img src={asset.asset} alt={`${asset.language_name} asset`} className="max-h-48 w-full object-contain bg-black/10" />
+                          </div>
+                        ) : (
+                          <div className="rounded-lg overflow-hidden border border-amber-500/10">
+                            <video src={asset.asset} controls className="w-full max-h-48 object-contain bg-black/10">
+                              Your browser does not support the video tag.
+                            </video>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </SectionCard>
           </div>
         )}
 

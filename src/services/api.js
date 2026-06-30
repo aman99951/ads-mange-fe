@@ -95,12 +95,20 @@ export const ads = {
   updateLanguageAsset: (id, data) => request(`/ads/${id}/update_language_asset/`, { method: 'PATCH', body: JSON.stringify(data) }),
   languageAssetsList: (id) => request(`/ads/${id}/language_assets_list/`),
   pushToApp: (id, appId) => request(`/ads/${id}/push_to_app/`, { method: 'POST', body: JSON.stringify({ app_id: appId }) }),
+  pushToApps: (id, appIds) => request(`/ads/${id}/push_to_app/`, { method: 'POST', body: JSON.stringify({ app_ids: appIds }) }),
   pushedApps: (id) => request(`/ads/${id}/pushed_apps/`),
   generateImage: (data) => request('/ads/generate_image/', { method: 'POST', body: JSON.stringify(data) }),
   generateVideoClip: (data) => request('/ads/generate_video_clip/', { method: 'POST', body: JSON.stringify(data) }),
   getModels: () => request('/models/'),
   getUsageStats: () => request('/usage-stats/'),
   enhancePrompt: (data) => request('/enhance-prompt/', { method: 'POST', body: JSON.stringify(data) }),
+  uploadAsset: (id, data) => {
+    const form = new FormData();
+    Object.entries(data).forEach(([k, v]) => {
+      if (v !== undefined && v !== null) form.append(k, v);
+    });
+    return request(`/ads/${id}/upload_asset/`, { method: 'POST', body: form });
+  },
   createCreative: (data) => {
     const hasFile = data.image_file instanceof File || data.video_file instanceof File;
     if (hasFile) {

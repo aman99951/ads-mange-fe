@@ -63,10 +63,65 @@ export default function DeveloperPlayground() {
     }
   };
 
+  const [showExamples, setShowExamples] = useState(false);
+
   return (
     <AppLayout fullWidth>
       <div className="max-w-[1200px] mx-auto">
         <PageHeader title="API Playground" description="Test developer API endpoints live" />
+
+        {/* Quick Start Examples */}
+        <div className="mb-6 animate-fade-in-up animate-delay-50">
+          <SectionCard title={
+            <button onClick={() => setShowExamples(!showExamples)} className="flex items-center justify-between w-full text-left">
+              <span>Quick Start Examples</span>
+              <svg className={`w-4 h-4 transition-transform ${showExamples ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          }>
+            {showExamples && (
+              <div className="space-y-3 text-xs">
+                <div>
+                  <p className={`font-semibold mb-1 ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>1. Get your token</p>
+                  <div className={`p-3 rounded-xl text-[10px] font-mono overflow-x-auto whitespace-nowrap ${
+                    dark ? 'bg-neutral-900 text-neutral-400' : 'bg-stone-100 text-stone-600'
+                  }`}>
+                    <div className="text-amber-500"># Login with your email &amp; password:</div>
+                    <div>curl -X POST {API_BASE}/auth/developer-login/ \</div>
+                    <div className="pl-4">-H "Content-Type: application/json" \</div>
+                    <div className="pl-4">-d '&#123;"email":"your@email.com","password":"yourpass"&#125;'</div>
+                    <div className="mt-1 text-amber-500"># &rarr; Returns: &#123;"access": "&lt;YOUR_JWT_TOKEN&gt;"&#125;</div>
+                  </div>
+                </div>
+                <div>
+                  <p className={`font-semibold mb-1 ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>2. Use the token in requests</p>
+                  <div className={`p-3 rounded-xl text-[10px] font-mono overflow-x-auto whitespace-nowrap ${
+                    dark ? 'bg-neutral-900 text-neutral-400' : 'bg-stone-100 text-stone-600'
+                  }`}>
+                    <div className="mb-1 text-amber-500"># List all approved campaigns:</div>
+                    <div>curl {API_BASE}/developer/ads/ \</div>
+                    <div className="pl-4">-H "Authorization: Bearer &lt;YOUR_JWT_TOKEN&gt;"</div>
+                    <div className="mt-1 text-amber-500"># Get campaign details:</div>
+                    <div>curl {API_BASE}/developer/ads/&lt;ID&gt;/details/ \</div>
+                    <div className="pl-4">-H "Authorization: Bearer &lt;YOUR_JWT_TOKEN&gt;"</div>
+                  </div>
+                </div>
+                <div>
+                  <p className={`font-semibold mb-1 ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>3. JavaScript / Fetch</p>
+                  <div className={`p-3 rounded-xl text-[10px] font-mono overflow-x-auto whitespace-nowrap ${
+                    dark ? 'bg-neutral-900 text-neutral-400' : 'bg-stone-100 text-stone-600'
+                  }`}>
+                    <div className="text-amber-500">const res = await fetch('{API_BASE}/developer/ads/', {"{"}</div>
+                    <div className="pl-4">headers: {"{"}'Authorization': 'Bearer &lt;token&gt;'{"}"}</div>
+                    <div className="text-amber-500">{"}"});</div>
+                    <div className="text-amber-500">const campaigns = await res.json();</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </SectionCard>
+        </div>
 
         <div className="animate-fade-in-up animate-delay-100">
           <SectionCard title="Request">

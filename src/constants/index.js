@@ -52,6 +52,7 @@ export const ROUTES = {
   DEVELOPER_REGISTER: '/developer/register',
   DEVELOPER_DASHBOARD: '/developer/dashboard',
   DEVELOPER_PLAYGROUND: '/developer/playground',
+  DEVELOPER_CAMPAIGNS: '/developer/campaigns',
 };
 
 export const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000/api';

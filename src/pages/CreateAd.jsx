@@ -53,10 +53,30 @@ export default function CreateAd() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [asset, setAsset] = useState(null);
+  const [contentType, setContentType] = useState('video');
+  const [contentSize, setContentSize] = useState('');
   const [scheduledStart, setScheduledStart] = useState('');
   const [scheduledEnd, setScheduledEnd] = useState('');
   const [csvFile, setCsvFile] = useState(null);
   const [csvPreview, setCsvPreview] = useState(null);
+
+  const videoSizes = [
+    { value: '1920x1080', label: 'Full HD (1920×1080) — 16:9 Landscape' },
+    { value: '1080x1920', label: 'Full HD (1080×1920) — 9:16 Portrait' },
+    { value: '1280x720', label: 'HD (1280×720) — 16:9' },
+    { value: '1080x1080', label: 'Square (1080×1080) — 1:1' },
+    { value: '3840x2160', label: '4K UHD (3840×2160) — 16:9' },
+  ];
+
+  const imageSizes = [
+    { value: '1920x1080', label: 'Widescreen (1920×1080) — 16:9' },
+    { value: '1080x1350', label: 'Portrait (1080×1350) — 4:5' },
+    { value: '1080x1080', label: 'Square (1080×1080) — 1:1' },
+    { value: '1200x628', label: 'Social Share (1200×628) — 1.91:1' },
+    { value: '720x1280', label: 'Vertical (720×1280) — 9:16' },
+  ];
+
+  const sizeOptions = contentType === 'video' ? videoSizes : imageSizes;
 
   const toggleLocality = (loc) => {
     setSelectedLocalities((prev) =>
@@ -80,7 +100,7 @@ export default function CreateAd() {
     if (step === 1) return selectedState && selectedCity && selectedLocalities.length > 0;
     if (step === 2) return selectedAudienceIds.length > 0;
     if (step === 3) return selectedLanguageIds.length > 0;
-    if (step === 4) return title.trim().length >= 3;
+    if (step === 4) return title.trim().length >= 3 && (!!contentSize || contentType);
     return true;
   };
 
@@ -130,6 +150,8 @@ export default function CreateAd() {
         target_area_ids: selectedLocalities.map((l) => l.id),
         target_audience_ids: selectedAudienceIds,
         language_ids: selectedLanguageIds,
+        content_type: contentType,
+        content_size: contentSize,
         scheduled_start: scheduledStart || null,
         scheduled_end: scheduledEnd || null,
       };
@@ -200,6 +222,108 @@ export default function CreateAd() {
               </div>
               <Input label="Campaign Title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., Summer Sale 2026" />
               <Input label="Description" textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe your ad campaign..." />
+
+              {/* Content Type Selection */}
+              <div>
+                <label className={`block text-sm font-medium mb-2 transition-colors duration-500 ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>
+                  What would you like to generate?
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => { setContentType('video'); setContentSize(''); }}
+                    className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-300 ${
+                      contentType === 'video'
+                        ? dark ? 'border-amber-500 bg-amber-500/10' : 'border-amber-500 bg-amber-50'
+                        : dark ? 'border-neutral-700 bg-neutral-800/50 hover:border-neutral-500' : 'border-stone-200 bg-white hover:border-stone-300'
+                    }`}
+                  >
+                    <svg className={`w-8 h-8 ${contentType === 'video' ? 'text-amber-500' : dark ? 'text-neutral-400' : 'text-stone-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+                    </svg>
+                    <span className={`text-sm font-semibold ${contentType === 'video' ? 'text-amber-500' : dark ? 'text-neutral-300' : 'text-neutral-700'}`}>Video Ad</span>
+                    <span className={`text-[10px] text-center ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>Motion graphics & animation</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setContentType('image'); setContentSize(''); }}
+                    className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-300 ${
+                      contentType === 'image'
+                        ? dark ? 'border-amber-500 bg-amber-500/10' : 'border-amber-500 bg-amber-50'
+                        : dark ? 'border-neutral-700 bg-neutral-800/50 hover:border-neutral-500' : 'border-stone-200 bg-white hover:border-stone-300'
+                    }`}
+                  >
+                    <svg className={`w-8 h-8 ${contentType === 'image' ? 'text-amber-500' : dark ? 'text-neutral-400' : 'text-stone-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
+                    </svg>
+                    <span className={`text-sm font-semibold ${contentType === 'image' ? 'text-amber-500' : dark ? 'text-neutral-300' : 'text-neutral-700'}`}>Image Ad</span>
+                    <span className={`text-[10px] text-center ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>Static visuals & banners</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Size Selection */}
+              <div>
+                <label className={`block text-sm font-medium mb-2 transition-colors duration-500 ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>
+                  {contentType === 'video' ? 'Video Size / Resolution' : 'Image Size / Dimensions'}
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {sizeOptions.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setContentSize(opt.value)}
+                      className={`text-left px-4 py-3 rounded-xl border text-sm transition-all duration-300 ${
+                        contentSize === opt.value
+                          ? dark ? 'border-amber-500 bg-amber-500/10 text-amber-300' : 'border-amber-500 bg-amber-50 text-amber-700'
+                          : dark ? 'border-neutral-700 bg-neutral-800/50 text-neutral-400 hover:border-neutral-500' : 'border-stone-200 bg-white text-stone-600 hover:border-stone-300'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Example Preview */}
+              {contentType && contentSize && (
+                <div className={`rounded-xl border overflow-hidden transition-all duration-300 animate-[fadeIn_0.3s_ease] ${
+                  dark ? 'border-amber-500/20 bg-neutral-800/60' : 'border-amber-200 bg-amber-50/50'
+                }`}>
+                  <div className={`px-4 py-2.5 text-xs font-semibold border-b ${
+                    dark ? 'border-amber-500/10 text-amber-400' : 'border-amber-200 text-amber-700'
+                  }`}>
+                    {contentType === 'video' ? '🎬 Video Preview' : '🖼️ Image Preview'} — {contentSize}
+                  </div>
+                  <div className="p-4 flex items-center justify-center">
+                    {contentType === 'video' ? (
+                      <div className="relative w-full max-w-sm rounded-lg overflow-hidden bg-black/5">
+                        <div style={{ aspectRatio: contentSize.replace('x', '/') }} className="bg-gradient-to-br from-amber-400/20 via-amber-500/10 to-amber-600/20 flex items-center justify-center">
+                          <div className="text-center p-6">
+                            <svg className="w-12 h-12 mx-auto mb-3 text-amber-400/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+                            </svg>
+                            <p className={`text-xs font-medium ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>Your video ad will appear here</p>
+                            <p className={`text-[10px] mt-1 ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>Full motion • {contentSize} • {contentSize.split('x')[0]}p</p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="relative w-full max-w-sm rounded-lg overflow-hidden bg-black/5">
+                        <div style={{ aspectRatio: contentSize.replace('x', '/') }} className="bg-gradient-to-br from-amber-400/20 via-amber-500/10 to-amber-600/20 flex items-center justify-center">
+                          <div className="text-center p-6">
+                            <svg className="w-12 h-12 mx-auto mb-3 text-amber-400/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
+                            </svg>
+                            <p className={`text-xs font-medium ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>Your image ad will appear here</p>
+                            <p className={`text-[10px] mt-1 ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>High-res static • {contentSize} • {contentSize.split('x')[0]}px wide</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="relative">
                 <div className={`absolute inset-0 flex items-center ${dark ? 'text-neutral-700' : 'text-stone-300'}`}><div className="w-full border-t" /></div>
@@ -277,6 +401,21 @@ export default function CreateAd() {
                   <p className={`text-sm font-medium ${dark ? 'text-neutral-100' : 'text-neutral-900'}`}>{title || 'Untitled'}</p>
                   {description && <p className={`text-xs mt-0.5 line-clamp-2 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>{description}</p>}
                   {asset && <p className={`text-xs mt-1 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>Asset: {asset.name}</p>}
+                </ReviewCard>
+
+                <ReviewCard title="Content Format" onEdit={() => setStep(4)}>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold uppercase tracking-wide ${
+                      contentType === 'video'
+                        ? dark ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-100 text-amber-700'
+                        : dark ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {contentType === 'video' ? '🎬 Video' : '🖼️ Image'}
+                    </span>
+                    <span className={`text-xs ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>
+                      {contentSize || 'Size not selected'}
+                    </span>
+                  </div>
                 </ReviewCard>
 
                 <ReviewCard title="Schedule" onEdit={() => setStep(5)}>

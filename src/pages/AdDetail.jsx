@@ -29,7 +29,7 @@ export default function AdDetail() {
   const [iterationFeedback, setIterationFeedback] = useState('');
   const [devApps, setDevApps] = useState([]);
   const [pushedApps, setPushedApps] = useState([]);
-  const [selectedAppId, setSelectedAppId] = useState('');
+  const [selectedAppIds, setSelectedAppIds] = useState([]);
   const [pushing, setPushing] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
   const [langVideoUrls, setLangVideoUrls] = useState({});
@@ -78,16 +78,16 @@ export default function AdDetail() {
     }
   };
 
-  const handlePushToApp = async () => {
-    if (!selectedAppId) return;
+  const handlePushToApps = async () => {
+    if (selectedAppIds.length === 0) return;
     setPushing(true);
     try {
-      await ads.pushToApp(id, parseInt(selectedAppId));
+      await ads.pushToApps(id, selectedAppIds);
       const updated = await ads.pushedApps(id);
       setPushedApps(updated);
-      setSelectedAppId('');
+      setSelectedAppIds([]);
     } catch (e) {
-      setError(e.message || 'Failed to push ad to app');
+      setError(e.message || 'Failed to push ad to apps');
     } finally {
       setPushing(false);
     }
@@ -292,6 +292,25 @@ export default function AdDetail() {
           </div>
         )}
 
+        {/* Final Video / Asset */}
+        {videoUrl && (
+          <div className="animate-fade-in-up animate-delay-300">
+            <SectionCard title="Your Ad Video" className="mb-8">
+              {isImageFile(videoUrl) ? (
+                <div className="rounded-xl overflow-hidden border border-amber-500/10">
+                  <img src={videoUrl} alt="Ad asset" className="max-h-80 w-full object-contain bg-black/10" />
+                </div>
+              ) : (
+                <div className="rounded-xl overflow-hidden border border-amber-500/10 max-w-2xl">
+                  <video src={videoUrl} controls className="w-full max-h-96 object-contain bg-black/10">
+                    Your browser does not support the video tag.
+                  </video>
+                </div>
+              )}
+            </SectionCard>
+          </div>
+        )}
+
         {/* Generated Videos by Language */}
         {ad.language_assets?.length > 0 && ad.language_assets.some(a => a.status === 'completed') && (
           <div className="animate-fade-in-up animate-delay-300">
@@ -332,46 +351,117 @@ export default function AdDetail() {
         {/* Push to Developer App - Client side */}
         {ad.status === 'approved' && devApps.length > 0 && (
           <div className="mb-8 animate-fade-in-up animate-delay-350">
-            <SectionCard title="Push to Developer App">
-              <p className={`text-xs mb-3 ${c(dark ? 'dark' : 'light').textMuted}`}>
-                Your ad has been approved! Push it to a registered developer app to make it available via the public API.
+            <SectionCard title="Push to Developer Apps">
+              <p className={`text-xs mb-4 ${c(dark ? 'dark' : 'light').textMuted}`}>
+                Your ad has been approved! Select one or more developer apps/websites to publish your ad to.
               </p>
-              <div className="flex items-end gap-3">
-                <div className="flex-1">
-                  <label className={`block text-xs font-medium mb-1 ${c(dark ? 'dark' : 'light').textMuted}`}>Select App</label>
-                  <select value={selectedAppId} onChange={e => setSelectedAppId(e.target.value)}
-                    className={`w-full rounded-lg px-3 py-2 text-sm border transition-colors duration-500 ${
-                      dark ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-white border-stone-300 text-stone-900'
+
+              {/* Available Apps Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                {devApps.filter(a => a.is_active).map(app => {
+                  const isPushed = pushedApps.some(p => p.app_id === app.id);
+                  const isSelected = selectedAppIds.includes(app.id);
+                  return (
+                    <div key={app.id} className={`rounded-xl p-4 border transition-all duration-300 ${
+                      isPushed
+                        ? dark ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-emerald-50 border-emerald-200'
+                        : isSelected
+                          ? dark ? 'bg-amber-500/5 border-amber-500/30' : 'bg-amber-50 border-amber-300'
+                          : dark ? 'bg-neutral-800/40 border-neutral-700/50' : 'bg-stone-50 border-stone-200'
                     }`}>
-                    <option value="">-- Choose an app --</option>
-                    {devApps.filter(a => a.is_active).map(app => (
-                      <option key={app.id} value={app.id}>
-                        {app.app_name} ({app.app_type}){app.app_url ? ` - ${app.app_url}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {(() => {
-                    const sel = selectedAppId ? devApps.find(a => a.id === Number(selectedAppId)) : null;
-                    return sel?.app_url ? (
-                      <p className={`text-[10px] mt-1 truncate ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
-                        URL: {sel.app_url}
-                      </p>
-                    ) : null;
-                  })()}
-                </div>
-                <Button onClick={handlePushToApp} loading={pushing} disabled={!selectedAppId} size="sm">
-                  Push
+                      <div className="flex items-start gap-3">
+                        {/* Checkbox */}
+                        {!isPushed && (
+                          <input type="checkbox" checked={isSelected}
+                            onChange={() => {
+                              setSelectedAppIds(prev =>
+                                prev.includes(app.id) ? prev.filter(id => id !== app.id) : [...prev, app.id]
+                              );
+                            }}
+                            className="mt-1 w-4 h-4 rounded accent-amber-500 cursor-pointer"
+                          />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-base ${app.app_type === 'mobile' ? '📱' : '🌐'}`} />
+                            <h4 className={`text-sm font-bold truncate ${c(dark ? 'dark' : 'light').text}`}>
+                              {app.app_name}
+                            </h4>
+                          </div>
+                          {app.description && (
+                            <p className={`text-[10px] mt-0.5 leading-relaxed ${c(dark ? 'dark' : 'light').textMuted}`}>
+                              {app.description}
+                            </p>
+                          )}
+                          {app.app_url && (
+                            <a href={app.app_url} target="_blank" rel="noopener noreferrer"
+                              className={`text-[10px] mt-1 block truncate hover:underline ${dark ? 'text-blue-400' : 'text-blue-600'}`}>
+                              {app.app_url}
+                            </a>
+                          )}
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full uppercase tracking-wider font-semibold ${
+                              app.app_type === 'mobile'
+                                ? dark ? 'bg-violet-500/10 text-violet-300' : 'bg-violet-50 text-violet-700'
+                                : dark ? 'bg-cyan-500/10 text-cyan-300' : 'bg-cyan-50 text-cyan-700'
+                            }`}>
+                              {app.app_type}
+                            </span>
+                            <span className={`text-[10px] ${c(dark ? 'dark' : 'light').textMuted}`}>
+                              by {app.company || 'Unknown'}
+                            </span>
+                          </div>
+                          {/* Rating Stars */}
+                          <div className="flex items-center gap-1 mt-1.5">
+                            {[1,2,3,4,5].map(star => (
+                              <svg key={star} className={`w-3.5 h-3.5 ${
+                                star <= Math.round(app.rating || 0)
+                                  ? 'text-amber-400'
+                                  : dark ? 'text-neutral-600' : 'text-stone-300'
+                              }`} fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                              </svg>
+                            ))}
+                            <span className={`text-[10px] ml-1 ${c(dark ? 'dark' : 'light').textMuted}`}>
+                              {app.rating ? app.rating.toFixed(1) : 'N/A'}
+                            </span>
+                          </div>
+                        </div>
+                        {isPushed && (
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold whitespace-nowrap ${
+                            dark ? 'bg-emerald-500/10 text-emerald-300' : 'bg-emerald-100 text-emerald-700'
+                          }`}>
+                            Pushed
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-3">
+                <Button onClick={handlePushToApps} loading={pushing} disabled={selectedAppIds.length === 0} size="sm">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                  </svg>
+                  {selectedAppIds.length > 0 ? `Push to Selected (${selectedAppIds.length})` : 'Select Apps Above'}
                 </Button>
               </div>
+
+              {/* Already Pushed Summary */}
               {pushedApps.length > 0 && (
-                <div className="mt-3">
-                  <p className={`text-xs font-medium mb-1 ${c(dark ? 'dark' : 'light').textMuted}`}>Already pushed to:</p>
+                <div className="mt-4 pt-3 border-t border-dashed border-amber-500/20">
+                  <p className={`text-[10px] font-medium mb-2 ${c(dark ? 'dark' : 'light').textMuted}`}>
+                    Already pushed to {pushedApps.length} app{pushedApps.length > 1 ? 's' : ''}:
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {pushedApps.map(pa => (
-                      <span key={pa.push_id} className={`text-xs px-2 py-1 rounded-full ${
+                      <span key={pa.push_id} className={`text-[10px] px-2 py-1 rounded-full ${
                         dark ? 'bg-emerald-500/10 text-emerald-300' : 'bg-emerald-50 text-emerald-700'
                       }`}>
-                        {pa.app_name}
+                        {pa.app_name}{pa.company ? ` (${pa.company})` : ''}
                       </span>
                     ))}
                   </div>
@@ -413,11 +503,18 @@ export default function AdDetail() {
             </div>
           )}
           {ad.status === 'approved' && !ad.final_asset && (
-            <div className={`flex items-center gap-2 text-sm font-medium ${dark ? 'text-emerald-400' : 'text-emerald-700'}`}>
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Approved
+            <div className={`flex items-start gap-3 text-sm ${dark ? 'text-emerald-400' : 'text-emerald-700'}`}>
+              <div className={`p-2 rounded-full ${dark ? 'bg-emerald-500/10' : 'bg-emerald-100'}`}>
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <p className="font-semibold">Campaign Approved!</p>
+                <p className={`text-xs mt-0.5 ${dark ? 'text-emerald-300/70' : 'text-emerald-600'}`}>
+                  Your ad video will be generated and available here shortly.
+                </p>
+              </div>
             </div>
           )}
         </div>

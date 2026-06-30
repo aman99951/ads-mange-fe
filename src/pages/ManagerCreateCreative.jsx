@@ -9,6 +9,32 @@ import Button from '../components/ui/Button';
 
 const c = (k) => colors[k];
 
+function gcd(a, b) {
+  a = Math.abs(a); b = Math.abs(b);
+  while (b) { [a, b] = [b, a % b]; }
+  return a;
+}
+
+function toAspectRatio(w, h) {
+  const g = gcd(w, h);
+  const sw = w / g;
+  const sh = h / g;
+  const common = {
+    '1:1': '1:1', '3:4': '3:4', '4:3': '4:3',
+    '9:16': '9:16', '16:9': '16:9',
+    '3:2': '3:2', '2:3': '2:3',
+  };
+  const key = `${sw}:${sh}`;
+  if (common[key]) return key;
+  const ratio = w / h;
+  const entries = Object.entries(common).map(([k, v]) => {
+    const [aw, ah] = k.split(':').map(Number);
+    return { key: v, diff: Math.abs(aw / ah - ratio) };
+  });
+  entries.sort((a, b) => a.diff - b.diff);
+  return entries[0].key;
+}
+
 const DIMENSION_PRESETS = [
   { label: 'Square', w: 1024, h: 1024, icon: '⬜' },
   { label: 'Landscape', w: 1920, h: 1080, icon: '🟥' },
@@ -293,142 +319,75 @@ async function mergeVideosClientSide(clips, outputW, outputH, fps = 30, onProgre
 /* ───────── Sub-components ───────── */
 
 function Sidebar({ dark, mode, activeMediaType, onModeChange, onMediaTypeChange, onNewTemplate }) {
-  const [showRecent, setShowRecent] = useState(true);
-
   return (
-    <div className={`w-[280px] flex-shrink-0 flex flex-col h-full overflow-hidden ${
+    <div className={`w-[220px] flex-shrink-0 flex flex-col h-full ${
       dark ? 'bg-neutral-900/90 border-r border-neutral-800' : 'bg-white/90 border-r border-stone-200'
     }`}>
       {/* Sidebar Header */}
-      <div className={`px-5 py-4 border-b ${dark ? 'border-neutral-800' : 'border-stone-200'}`}>
-        <h2 className={`text-sm font-bold ${dark ? 'text-neutral-200' : 'text-neutral-800'}`}>Creative Studio</h2>
-        <p className={`text-[10px] mt-0.5 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
-          AI-powered content creator
-        </p>
+      <div className={`px-4 py-3 border-b ${dark ? 'border-neutral-800' : 'border-stone-200'}`}>
+        <h2 className={`text-xs font-bold tracking-tight ${dark ? 'text-neutral-200' : 'text-neutral-800'}`}>Creative Studio</h2>
       </div>
 
-      {/* Mode Switcher */}
-      <div className="px-4 pt-4 pb-2">
-        <h3 className={`text-[11px] font-semibold uppercase tracking-wider mb-3 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
-          Tools
-        </h3>
-        <div className="space-y-1.5">
-          {APP_MODES.map((md) => (
-            <button
-              key={md.key}
-              onClick={() => onModeChange(md.key)}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                mode === md.key
-                  ? dark
-                    ? 'bg-amber-500/12 text-amber-300 border border-amber-500/25 shadow-[0_0_15px_rgba(217,160,50,0.06)]'
-                    : 'bg-amber-50 text-amber-700 border border-amber-200 shadow-sm'
-                  : dark
-                    ? 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60 border border-transparent'
-                    : 'text-stone-500 hover:text-stone-800 hover:bg-stone-100 border border-transparent'
-              }`}
-            >
-              <span className="text-lg">{md.icon}</span>
-              <span>{md.label}</span>
-            </button>
-          ))}
+      {/* Scrollable body */}
+      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
+        {/* Tools */}
+        <div>
+          <h3 className={`text-[9px] font-semibold uppercase tracking-wider mb-2 ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
+            Tools
+          </h3>
+          <div className="space-y-1">
+            {APP_MODES.map((md) => (
+              <button
+                key={md.key}
+                onClick={() => onModeChange(md.key)}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                  mode === md.key
+                    ? dark
+                      ? 'bg-amber-500/12 text-amber-300'
+                      : 'bg-amber-50 text-amber-700'
+                    : dark
+                      ? 'text-neutral-400 hover:bg-neutral-800'
+                      : 'text-stone-500 hover:bg-stone-100'
+                }`}
+              >
+                <span className="text-sm">{md.icon}</span>
+                <span>{md.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
 
-      {/* Media Type (only in generate mode) */}
-      {mode === 'generate' && (
-        <>
-          <div className="px-4 py-2">
-            <h3 className={`text-[11px] font-semibold uppercase tracking-wider mb-3 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
-              Create New
-            </h3>
-            <div className="space-y-2">
-              {MEDIA_TYPES.map((mt) => (
-                <button
-                  key={mt.key}
-                  onClick={() => onMediaTypeChange(mt.key)}
-                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                    activeMediaType === mt.key
-                      ? dark
-                        ? 'bg-amber-500/12 text-amber-300 border border-amber-500/25 shadow-[0_0_15px_rgba(217,160,50,0.06)]'
-                        : 'bg-amber-50 text-amber-700 border border-amber-200 shadow-sm'
-                      : dark
-                        ? 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60 border border-transparent'
-                        : 'text-stone-500 hover:text-stone-800 hover:bg-stone-100 border border-transparent'
-                  }`}
-                >
-                  <span className="text-lg">{mt.icon}</span>
-                  <span>{mt.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Dimension Templates */}
-          <div className="px-4 pb-3">
-            <h3 className={`text-[11px] font-semibold uppercase tracking-wider mb-3 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
-              Templates
-            </h3>
-            <div className="grid grid-cols-2 gap-2">
-              {DIMENSION_PRESETS.map((preset) => (
-                <button
-                  key={preset.label}
-                  onClick={() => onNewTemplate(preset)}
-                  className={`flex flex-col items-center gap-1 px-2.5 py-2.5 rounded-xl text-xs transition-all duration-200 ${
-                    dark
-                      ? 'bg-neutral-800/50 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border border-neutral-800 hover:border-neutral-700'
-                      : 'bg-stone-50 text-stone-500 hover:bg-stone-100 hover:text-stone-700 border border-stone-200 hover:border-stone-300'
-                  }`}
-                >
-                  <span className="text-base">{preset.icon}</span>
-                  <span className="font-medium">{preset.label}</span>
-                  <span className={`text-[9px] ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
-                    {preset.w}×{preset.h}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Recent Section */}
-      <div className={`flex-1 overflow-auto px-4 pb-4 ${!showRecent ? 'hidden' : ''}`}>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className={`text-[11px] font-semibold uppercase tracking-wider ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
+        {/* Recent */}
+        <div>
+          <h3 className={`text-[9px] font-semibold uppercase tracking-wider mb-2 ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
             Recent
           </h3>
-          <button
-            onClick={() => setShowRecent(!showRecent)}
-            className={`text-[10px] ${dark ? 'text-neutral-600 hover:text-neutral-400' : 'text-stone-400 hover:text-stone-600'}`}
-          >
-            {showRecent ? 'Hide' : 'Show'}
-          </button>
-        </div>
-        <div className="space-y-1.5">
-          {RECENT_PLACEHOLDERS.map((item) => (
-            <button
-              key={item.id}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition-all duration-200 ${
-                dark
-                  ? 'text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200'
-                  : 'text-stone-500 hover:bg-stone-100 hover:text-stone-700'
-              }`}
-            >
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm ${
-                dark ? 'bg-neutral-800' : 'bg-stone-100'
-              }`}>
-                {item.type === 'video' ? '🎬' : '🖼️'}
-              </div>
-              <div className="flex-1 text-left min-w-0">
-                <div className={`font-medium truncate ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>
-                  {item.label}
+          <div className="space-y-1">
+            {RECENT_PLACEHOLDERS.map((item) => (
+              <button
+                key={item.id}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all ${
+                  dark
+                    ? 'text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300'
+                    : 'text-stone-400 hover:bg-stone-100 hover:text-stone-600'
+                }`}
+              >
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs ${
+                  dark ? 'bg-neutral-800' : 'bg-stone-100'
+                }`}>
+                  {item.type === 'video' ? '🎬' : '🖼️'}
                 </div>
-                <div className={`text-[10px] ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
-                  {item.date}
+                <div className="flex-1 text-left min-w-0">
+                  <div className={`font-medium truncate ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>
+                    {item.label}
+                  </div>
+                  <div className={`text-[8px] ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
+                    {item.date}
+                  </div>
                 </div>
-              </div>
-            </button>
-          ))}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -526,7 +485,6 @@ function TransitionSelector({ value, onChange, dark }) {
   );
 }
 
-/* ───────── Video Merger Panel ───────── */
 const RECENT_PLACEHOLDERS = [
   { id: 1, label: 'Summer Sale Banner', type: 'image', date: '2 hours ago' },
   { id: 2, label: 'Product Showcase', type: 'video', date: '5 hours ago' },
@@ -534,6 +492,7 @@ const RECENT_PLACEHOLDERS = [
   { id: 4, label: 'Festival Promo', type: 'video', date: '2 days ago' },
 ];
 
+/* ───────── Video Merger Panel ───────── */
 function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError }) {
   const [timeline, setTimeline] = useState([]);
   const [merging, setMerging] = useState(false);
@@ -859,15 +818,21 @@ export default function ManagerCreateCreative() {
   const location = useLocation();
 
   const [mode, setMode] = useState('generate');
-  const [mediaType, setMediaType] = useState('image');
   const baseDescription = location.state?.prompt || '';
   const campaignLanguages = location.state?.languages || [];
+  const campaignMediaType = location.state?.mediaType || 'image';
+  const campaignDimensions = location.state?.dimensions || '';
+  const [mediaType, setMediaType] = useState(campaignMediaType);
   const [selectedLanguage, setSelectedLanguage] = useState(null);
   // Build prompt from base description + selected language
   const [prompt, setPrompt] = useState(baseDescription);
   const [negativePrompt, setNegativePrompt] = useState('');
-  const [width, setWidth] = useState(1024);
-  const [height, setHeight] = useState(1024);
+  const [width, setWidth] = useState(
+    campaignDimensions ? parseInt(campaignDimensions.split('x')[0], 10) || 1024 : 1024
+  );
+  const [height, setHeight] = useState(
+    campaignDimensions ? parseInt(campaignDimensions.split('x')[1], 10) || 1024 : 1024
+  );
   const [style, setStyle] = useState(null);
   const [duration, setDuration] = useState(5);
   const [enhancing, setEnhancing] = useState(false);
@@ -887,6 +852,7 @@ export default function ManagerCreateCreative() {
   const [showApiSettings, setShowApiSettings] = useState(false);
   const [myApiKey, setMyApiKey] = useState('');
   const [apiKeySaving, setApiKeySaving] = useState(false);
+  const [notification, setNotification] = useState(null);
 
   // Fetch models and Google API usage stats on mount
   useEffect(() => {
@@ -917,6 +883,8 @@ export default function ManagerCreateCreative() {
     setApiKeySaving(true);
     try {
       await managerSettings.setApiKey(myApiKey);
+      setNotification(myApiKey ? 'API key saved' : 'API key cleared');
+      setTimeout(() => setNotification(null), 2500);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -984,7 +952,7 @@ export default function ManagerCreateCreative() {
     setGenerating(true);
     setError('');
     try {
-      const aspectRatio = `${width}:${height}`;
+      const aspectRatio = toAspectRatio(width, height);
       if (mediaType === 'image') {
         const result = await ads.generateImage({
           prompt: prompt.trim(),
@@ -998,10 +966,11 @@ export default function ManagerCreateCreative() {
         // Refresh Google API quota after generation
         fetchUsageStats();
       } else {
+        const safeDuration = Math.max(4, Math.min(8, duration));
         const result = await ads.generateVideoClip({
           prompt: prompt.trim(),
           aspect_ratio: aspectRatio,
-          duration_seconds: duration,
+          duration_seconds: safeDuration,
           model: selectedVideoModel,
         });
         setGeneratedAssets(prev => [...prev, {
@@ -1058,34 +1027,22 @@ export default function ManagerCreateCreative() {
         {/* Main Content */}
         <div className="flex-1 overflow-auto">
           <div className={`${mode === 'merge' ? 'max-w-[900px]' : 'max-w-[1100px]'} mx-auto p-6 lg:p-8`}>
-            {/* Header Bar */}
-            <div className="flex items-center justify-between mb-6 animate-fade-in-up">
-              <div className="flex items-center gap-3">
-                <div className={`w-1 h-8 rounded-full bg-gradient-to-b ${
-                  mode === 'merge' ? 'from-purple-500 to-pink-500' : 'from-amber-500 to-amber-400'
-                }`} />
-                <div>
-                  <h1 className={`text-xl font-bold tracking-tight ${c(dark ? 'dark' : 'light').text}`}>
-                    {mode === 'generate'
-                      ? (mediaType === 'image' ? 'Generate Image' : 'Generate Video')
-                      : 'Video Merger'
-                    }
-                  </h1>
-                  <p className={`text-xs mt-0.5 ${c(dark ? 'dark' : 'light').textMuted}`}>
-                    {mode === 'generate'
-                      ? 'Describe what you want to create'
-                      : 'Join multiple videos with transition effects'
-                    }
-                  </p>
-                </div>
-              </div>
-              <Button variant="ghost" onClick={() => navigate('/manager/dashboard')}>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-                </svg>
-                Dashboard
-              </Button>
-            </div>
+            {/* Back button only */}
+            <button
+              onClick={() => {
+                if (window.confirm('Do you want to exit this page? Any unsaved progress will be lost.')) {
+                  navigate('/manager/dashboard');
+                }
+              }}
+              className={`flex items-center gap-1.5 mb-5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                dark ? 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800' : 'text-stone-500 hover:text-stone-700 hover:bg-stone-100'
+              }`}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+              </svg>
+              Back
+            </button>
 
             {/* Google API Quota — only shows REAL data from Google's responses */}
             {googleApiQuota?.exhausted && (
@@ -1225,573 +1182,407 @@ export default function ManagerCreateCreative() {
               </div>
             ) : (
               /* ─── Generate Mode ─── */
-              <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 animate-fade-in-up animate-delay-100">
-                {/* Left Column - Prompt & Settings */}
-                <div className="lg:col-span-3 space-y-5">
-                  <ErrorAlert message={error} onDismiss={() => setError('')} />
+              <div className="animate-fade-in-up animate-delay-100">
+                <ErrorAlert message={error} onDismiss={() => setError('')} />
 
-                  {/* API Settings — manager can use their own Google API key */}
-                  <div className={`rounded-2xl border transition-all duration-300 overflow-hidden ${
-                    dark ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white/90 border-stone-200 shadow-sm'
+                {notification && (
+                  <div className={`mb-4 px-4 py-2.5 rounded-xl border text-xs font-medium flex items-center gap-2 animate-fade-in-up ${
+                    dark ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-700'
                   }`}>
-                    <button
-                      onClick={() => setShowApiSettings(!showApiSettings)}
-                      className={`w-full flex items-center gap-3 px-5 py-3.5 text-sm font-medium transition-colors ${
-                        dark ? 'text-neutral-300 hover:text-neutral-100' : 'text-neutral-700 hover:text-neutral-900'
-                      }`}
-                    >
-                      <svg className={`w-4 h-4 transition-transform ${showApiSettings ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                      </svg>
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m0 0a3 3 0 01-3 3m3-3H5.25M5.25 15.75a3 3 0 01-3-3m3 3a3 3 0 013-3m-3 3v6" />
-                      </svg>
-                      <span className="flex-1 text-left">API Settings</span>
-                      <span className={`text-[10px] font-mono ${myApiKey ? (dark ? 'text-emerald-400' : 'text-emerald-600') : (dark ? 'text-neutral-500' : 'text-stone-400')}`}>
-                        {myApiKey ? 'Custom key set' : 'Using default'}
-                      </span>
-                    </button>
-
-                    {showApiSettings && (
-                      <div className={`px-5 pb-4 border-t ${dark ? 'border-neutral-800' : 'border-stone-200'}`}>
-                        <p className={`text-[11px] mt-3 mb-2.5 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
-                          Set your own Google AI API key to use your personal quota instead of the shared workspace key.
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={myApiKey}
-                            onChange={(e) => setMyApiKey(e.target.value)}
-                            placeholder="Enter your Google AI API key..."
-                            className={`flex-1 px-3.5 py-2.5 rounded-xl text-xs font-mono outline-none transition-all duration-200 ${
-                              dark
-                                ? 'bg-neutral-800/80 border border-neutral-700 text-neutral-200 placeholder-neutral-500 focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20'
-                                : 'bg-stone-50/80 border border-stone-300 text-neutral-900 placeholder-neutral-400 focus:border-amber-500 focus:ring-1 focus:ring-amber-500/15'
-                            }`}
-                          />
-                          <button
-                            onClick={handleSaveApiKey}
-                            disabled={apiKeySaving}
-                            className={`px-4 py-2.5 rounded-xl text-xs font-medium transition-all duration-200 flex-shrink-0 ${
-                              apiKeySaving
-                                ? dark ? 'bg-neutral-800 text-neutral-500' : 'bg-stone-100 text-stone-400'
-                                : dark
-                                  ? 'bg-amber-500/15 text-amber-300 border border-amber-500/25 hover:bg-amber-500/25'
-                                  : 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
-                            }`}
-                          >
-                            {apiKeySaving ? 'Saving...' : 'Save'}
-                          </button>
-                          {myApiKey && (
-                            <button
-                              onClick={async () => {
-                                setMyApiKey('');
-                                try { await managerSettings.setApiKey(''); } catch {}
-                              }}
-                              className={`px-3 py-2.5 rounded-xl text-xs font-medium transition-all duration-200 ${
-                                dark
-                                  ? 'text-neutral-500 hover:text-red-400 hover:bg-neutral-800/60'
-                                  : 'text-stone-400 hover:text-red-500 hover:bg-stone-100'
-                              }`}
-                            >
-                              Clear
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )}
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    {notification}
                   </div>
+                )}
 
-                  {/* Prompt Input */}
-                  <div className={`rounded-2xl p-5 border transition-all duration-300 ${
-                    dark ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white/90 border-stone-200 shadow-sm'
-                  }`}>
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className={`w-2 h-2 rounded-full ${mediaType === 'image' ? 'bg-amber-500' : 'bg-blue-500'}`} />
-                      <h3 className={`text-sm font-bold ${dark ? 'text-neutral-200' : 'text-neutral-800'}`}>
-                        Prompt
-                      </h3>
-                      <span className={`ml-auto text-[10px] ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
-                        {prompt.length} chars
-                      </span>
-                    </div>
-                    <textarea
-                      value={prompt}
-                      onChange={(e) => setPrompt(e.target.value)}
-                      placeholder={
-                        mediaType === 'image'
-                          ? 'Describe the image in detail... style, lighting, colors, composition, mood...'
-                          : 'Describe the video scene... motion, camera angles, transitions, atmosphere...'
-                      }
-                      rows={4}
-                      className={`w-full px-4 py-3.5 rounded-xl text-sm outline-none transition-all duration-300 resize-none ${
-                        dark
-                          ? 'bg-neutral-800/80 border border-neutral-700 text-neutral-100 placeholder-neutral-500 focus:border-amber-500/50 focus:ring-2 focus:ring-amber-500/15'
-                          : 'bg-stone-50/80 border border-stone-300 text-neutral-900 placeholder-neutral-400 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10'
-                      }`}
-                    />
-
-                    {/* Enhance Prompt Button */}
-                    <div className="flex items-center justify-end mt-2">
-                      <button
-                        onClick={handleEnhancePrompt}
-                        disabled={!prompt.trim() || enhancing}
-                        className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-medium transition-all duration-200 ${
-                          enhancing
-                            ? dark
-                              ? 'bg-amber-500/10 text-amber-400/60 border border-amber-500/15'
-                              : 'bg-amber-50 text-amber-400 border border-amber-200'
-                            : prompt.trim()
-                              ? dark
-                                ? 'bg-gradient-to-r from-amber-500/15 to-purple-500/15 text-amber-300 border border-amber-500/25 hover:from-amber-500/25 hover:to-purple-500/25 hover:shadow-[0_0_20px_rgba(217,160,50,0.08)]'
-                                : 'bg-gradient-to-r from-amber-50 to-purple-50 text-amber-700 border border-amber-200 hover:from-amber-100 hover:to-purple-100 hover:shadow-md'
-                              : dark
-                                ? 'text-neutral-600 border border-neutral-800 cursor-not-allowed'
-                                : 'text-stone-400 border border-stone-200 cursor-not-allowed'
+                {/* ─── Top Toolbar: Model, Dimensions, Style, Duration, Generate ─── */}
+                <div className={`rounded-xl border transition-all duration-300 px-4 py-3 mb-4 ${
+                  dark ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white/90 border-stone-200 shadow-sm'
+                }`}>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {/* Model */}
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-medium hidden sm:inline ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>Model</span>
+                      <select
+                        value={selectedModel}
+                        onChange={(e) => setSelectedModel(e.target.value)}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium outline-none ${
+                          dark ? 'bg-neutral-800 border border-neutral-700 text-neutral-200' : 'bg-stone-50 border border-stone-300 text-neutral-900'
                         }`}
                       >
-                        {enhancing ? (
-                          <>
-                            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                            </svg>
-                            Enhancing with AI...
-                          </>
-                        ) : (
-                          <>
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
-                            </svg>
-                            Enhance with AI ✨
-                          </>
-                        )}
-                      </button>
+                        {(mediaType === 'image' ? imageModels : videoModels).map((m) => (
+                          <option key={m.id} value={m.id}>{m.name}</option>
+                        ))}
+                      </select>
                     </div>
 
-                    {/* Negative Prompt Toggle */}
-                    <button
-                      onClick={() => setShowNegative(!showNegative)}
-                      className={`mt-2 text-[11px] font-medium flex items-center gap-1.5 transition-colors ${
-                        dark ? 'text-neutral-500 hover:text-neutral-300' : 'text-stone-400 hover:text-stone-600'
-                      }`}
-                    >
-                      <svg className={`w-3 h-3 transition-transform ${showNegative ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                      </svg>
-                      Negative prompt
-                    </button>
+                    <div className={`w-px h-5 ${dark ? 'bg-neutral-700' : 'bg-stone-200'}`} />
 
-                    {showNegative && (
-                      <div className="mt-2 animate-fade-in-up">
-                        <textarea
-                          value={negativePrompt}
-                          onChange={(e) => setNegativePrompt(e.target.value)}
-                          placeholder="Things to avoid... blurry, low quality, distorted..."
-                          rows={2}
-                          className={`w-full px-4 py-2.5 rounded-xl text-xs outline-none transition-all duration-300 resize-none ${
-                            dark
-                              ? 'bg-neutral-800/60 border border-neutral-700 text-neutral-400 placeholder-neutral-600 focus:border-red-500/50 focus:ring-2 focus:ring-red-500/10'
-                              : 'bg-stone-50/60 border border-stone-300 text-neutral-500 placeholder-neutral-400 focus:border-red-500 focus:ring-2 focus:ring-red-500/10'
-                          }`}
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Settings Panel */}
-                  <div className={`rounded-2xl p-5 border transition-all duration-300 ${
-                    dark ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white/90 border-stone-200 shadow-sm'
-                  }`}>
-                    <h3 className={`text-sm font-bold mb-4 ${dark ? 'text-neutral-200' : 'text-neutral-800'}`}>
-                      Settings
-                    </h3>
-
-                    {/* Model Selector */}
-                    <div className="mb-5">
-                      <div className="flex items-center justify-between mb-2.5">
-                        <label className={`text-xs font-medium ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>
-                          Google AI Model
-                        </label>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        {(mediaType === 'image' ? imageModels : videoModels).map((m) => {
-                          const isSelected = selectedModel === m.id;
-                          return (
-                            <button
-                              key={m.id}
-                              onClick={() => setSelectedModel(m.id)}
-                              className={`relative text-left px-3 py-2.5 rounded-xl text-xs transition-all duration-200 ${
-                                isSelected
-                                  ? dark
-                                    ? 'bg-amber-500/12 text-amber-300 border-2 border-amber-500/25 shadow-[0_0_10px_rgba(217,160,50,0.06)]'
-                                    : 'bg-amber-50 text-amber-700 border-2 border-amber-200 shadow-sm'
-                                  : dark
-                                    ? 'bg-neutral-800/50 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border border-neutral-800 hover:border-neutral-700'
-                                    : 'bg-stone-50 text-stone-500 hover:bg-stone-100 hover:text-stone-700 border border-stone-200 hover:border-stone-300'
-                              }`}
-                            >
-                              <div className="flex items-start justify-between gap-1">
-                                <span className="font-semibold">{m.name}</span>
-                              </div>
-                              <p className={`text-[9px] mt-0.5 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
-                                {m.description}
-                              </p>
-                            </button>
-                          );
-                        })}
-                      </div>
+                    {/* Media Type */}
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-medium hidden sm:inline ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>Type</span>
+                      <select
+                        value={mediaType}
+                        onChange={(e) => setMediaType(e.target.value)}
+                        className={`px-2 py-1.5 rounded-lg text-xs font-medium outline-none ${
+                          dark ? 'bg-neutral-800 border border-neutral-700 text-neutral-200' : 'bg-stone-50 border border-stone-300 text-neutral-900'
+                        }`}
+                      >
+                        {MEDIA_TYPES.map((mt) => (
+                          <option key={mt.key} value={mt.key}>{mt.icon} {mt.label}</option>
+                        ))}
+                      </select>
                     </div>
+
+                    <div className={`w-px h-5 ${dark ? 'bg-neutral-700' : 'bg-stone-200'}`} />
 
                     {/* Dimensions */}
-                    <div className="mb-4">
-                      <div className="flex items-center justify-between mb-2.5">
-                        <label className={`text-xs font-medium ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>
-                          Dimensions (px)
-                        </label>
-                        <span className={`text-[10px] ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
-                          {width} × {height} · {Math.round(width/height * 100) / 100}:1 ratio
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <DimensionInput label="Width" value={width} onChange={setWidth} dark={dark} />
-                        <span className={`text-lg font-light mt-5 ${dark ? 'text-neutral-600' : 'text-stone-300'}`}>
-                          ×
-                        </span>
-                        <DimensionInput label="Height" value={height} onChange={setHeight} dark={dark} />
-                        <button
-                          onClick={() => { const tmp = width; setWidth(height); setHeight(tmp); }}
-                          className={`mt-5 p-2 rounded-lg transition-colors ${
-                            dark ? 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800' : 'text-stone-400 hover:text-stone-600 hover:bg-stone-100'
-                          }`}
-                          title="Swap dimensions"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
-                          </svg>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[10px] font-medium hidden sm:inline ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>Size</span>
+                      <input
+                        type="number"
+                        value={width}
+                        onChange={(e) => setWidth(parseInt(e.target.value) || 0)}
+                        className={`w-14 px-1.5 py-1.5 rounded-lg text-xs text-center outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                          dark ? 'bg-neutral-800 border border-neutral-700 text-neutral-200' : 'bg-stone-50 border border-stone-300 text-neutral-900'
+                        }`}
+                        min={64}
+                        max={4096}
+                      />
+                      <span className={`text-[10px] ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>×</span>
+                      <input
+                        type="number"
+                        value={height}
+                        onChange={(e) => setHeight(parseInt(e.target.value) || 0)}
+                        className={`w-14 px-1.5 py-1.5 rounded-lg text-xs text-center outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                          dark ? 'bg-neutral-800 border border-neutral-700 text-neutral-200' : 'bg-stone-50 border border-stone-300 text-neutral-900'
+                        }`}
+                        min={64}
+                        max={4096}
+                      />
+                      <button
+                        onClick={() => { const tmp = width; setWidth(height); setHeight(tmp); }}
+                        className={`p-1 rounded transition-colors ${dark ? 'text-neutral-500 hover:text-neutral-300' : 'text-stone-400 hover:text-stone-600'}`}
+                      >
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+                        </svg>
+                      </button>
+                      {/* Presets dropdown */}
+                      <div className="relative group">
+                        <button className={`px-1.5 py-1.5 rounded text-[9px] font-medium transition-colors ${
+                          dark ? 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800' : 'text-stone-400 hover:text-stone-600 hover:bg-stone-100'
+                        }`}>
+                          Presets ▾
                         </button>
-                      </div>
-
-                      {/* Dimension Presets */}
-                      <div className="flex gap-1.5 mt-3 flex-wrap">
-                        {DIMENSION_PRESETS.map((preset) => (
-                          <button
-                            key={preset.label}
-                            onClick={() => handleNewTemplate(preset)}
-                            className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all duration-200 ${
-                              width === preset.w && height === preset.h
-                                ? dark
-                                  ? 'bg-amber-500/12 text-amber-300 border border-amber-500/25'
-                                  : 'bg-amber-50 text-amber-700 border border-amber-200'
-                                : dark
-                                  ? 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 border border-transparent'
-                                  : 'text-stone-500 hover:text-stone-700 hover:bg-stone-100 border border-transparent'
-                            }`}
-                          >
-                            {preset.label} ({preset.w}×{preset.h})
-                          </button>
-                        ))}
+                        <div className={`absolute top-full left-0 mt-1 z-20 w-36 rounded-xl border shadow-lg overflow-hidden hidden group-hover:block ${
+                          dark ? 'bg-neutral-800 border-neutral-700' : 'bg-white border-stone-200'
+                        }`}>
+                          {DIMENSION_PRESETS.map((preset) => (
+                            <button
+                              key={preset.label}
+                              onClick={() => handleNewTemplate(preset)}
+                              className={`w-full flex items-center justify-between px-3 py-1.5 text-[10px] transition-colors ${
+                                width === preset.w && height === preset.h
+                                  ? dark ? 'bg-amber-500/12 text-amber-300' : 'bg-amber-50 text-amber-700'
+                                  : dark ? 'text-neutral-400 hover:bg-neutral-700' : 'text-stone-500 hover:bg-stone-100'
+                              }`}
+                            >
+                              <span>{preset.label}</span>
+                              <span className={dark ? 'text-neutral-600' : 'text-stone-400'}>{preset.w}×{preset.h}</span>
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
 
-                    {/* Language Selector (from campaign) */}
+                    <div className={`w-px h-5 ${dark ? 'bg-neutral-700' : 'bg-stone-200'}`} />
+
+                    {/* Duration (video) or Style (image) */}
+                    {mediaType === 'video' ? (
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[10px] font-medium hidden sm:inline ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>Dur</span>
+                        <input
+                          type="number"
+                          min={4}
+                          max={8}
+                          value={duration}
+                          onChange={(e) => setDuration(Math.max(4, Math.min(8, parseInt(e.target.value) || 4)))}
+                          className={`w-12 px-1.5 py-1.5 rounded-lg text-xs text-center outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                            dark ? 'bg-neutral-800 border border-neutral-700 text-neutral-200' : 'bg-stone-50 border border-stone-300 text-neutral-900'
+                          }`}
+                        />
+                        <span className={`text-[10px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>sec (4-8)</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className={`text-[10px] font-medium hidden sm:inline ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>Style</span>
+                        <select
+                          value={style || ''}
+                          onChange={(e) => setStyle(e.target.value || null)}
+                          className={`px-2 py-1.5 rounded-lg text-[10px] font-medium outline-none ${
+                            dark ? 'bg-neutral-800 border border-neutral-700 text-neutral-200' : 'bg-stone-50 border border-stone-300 text-neutral-900'
+                          }`}
+                        >
+                          <option value="">None</option>
+                          {STYLE_OPTIONS.map((s) => (
+                            <option key={s.value} value={s.value}>{s.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Language chips (from campaign) */}
                     {campaignLanguages.length > 0 && (
-                      <div className="mb-4">
-                        <div className="flex items-center justify-between mb-2.5">
-                          <label className={`text-xs font-medium ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>
-                            Campaign Language
-                          </label>
-                          {selectedLanguage && (
-                            <button
-                              onClick={() => handleLanguageSelect(selectedLanguage)}
-                              className={`text-[9px] font-medium transition-colors ${
-                                dark ? 'text-neutral-500 hover:text-neutral-300' : 'text-stone-400 hover:text-stone-600'
-                              }`}
-                            >
-                              Clear
-                            </button>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap gap-2">
+                      <>
+                        <div className={`w-px h-5 ${dark ? 'bg-neutral-700' : 'bg-stone-200'}`} />
+                        <div className="flex items-center gap-1 overflow-x-auto max-w-[200px]">
                           {campaignLanguages.map((lang) => {
                             const isActive = selectedLanguage?.id === lang.id;
                             return (
                               <button
                                 key={lang.id}
                                 onClick={() => handleLanguageSelect(lang)}
-                                className={`px-3.5 py-2 rounded-xl text-xs font-medium transition-all duration-200 ${
+                                className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-medium transition-all ${
                                   isActive
-                                    ? dark
-                                      ? 'bg-amber-500/12 text-amber-300 border border-amber-500/25 shadow-[0_0_10px_rgba(217,160,50,0.06)]'
-                                      : 'bg-amber-50 text-amber-700 border border-amber-200 shadow-sm'
-                                    : dark
-                                      ? 'bg-neutral-800/50 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border border-neutral-800 hover:border-neutral-700'
-                                      : 'bg-stone-50 text-stone-500 hover:bg-stone-100 hover:text-stone-700 border border-stone-200 hover:border-stone-300'
+                                    ? dark ? 'bg-amber-500/12 text-amber-300' : 'bg-amber-50 text-amber-700'
+                                    : dark ? 'text-neutral-500 hover:text-neutral-300' : 'text-stone-400 hover:text-stone-600'
                                 }`}
                               >
-                                {lang.flag && <span className="mr-1.5">{lang.flag}</span>}
-                                {lang.name}
-                                {isActive && (
-                                  <span className="ml-1.5 text-amber-400">✓</span>
-                                )}
+                                {lang.flag}{lang.name}
                               </button>
                             );
                           })}
                         </div>
-                        <p className={`text-[9px] mt-1.5 ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
-                          {selectedLanguage
-                            ? `"Create in ${selectedLanguage.name}" will be prefixed to your prompt`
-                            : 'Select a language to target this generation'}
-                        </p>
-                      </div>
+                      </>
                     )}
 
-                    {/* Duration - Video only */}
-                    {mediaType === 'video' && (
-                      <div className="mb-4">
-                        <div className="flex items-center justify-between mb-2.5">
-                          <label className={`text-xs font-medium ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>
-                            Duration
-                          </label>
-                          <span className={`text-[10px] ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
-                            {duration >= 60
-                              ? `${Math.floor(duration / 60)} min ${duration % 60 > 0 ? `${duration % 60}s` : ''}`
-                              : `${duration}s`
-                            }
-                          </span>
-                        </div>
-
-                        {/* Presets */}
-                        <div className="grid grid-cols-3 gap-2 mb-3">
-                          {DURATION_OPTIONS.map((opt) => (
-                            <button
-                              key={opt.value}
-                              onClick={() => setDuration(opt.value)}
-                              className={`px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                                duration === opt.value
-                                  ? dark
-                                    ? 'bg-amber-500/12 text-amber-300 border border-amber-500/25 shadow-[0_0_10px_rgba(217,160,50,0.06)]'
-                                    : 'bg-amber-50 text-amber-700 border border-amber-200 shadow-sm'
-                                  : dark
-                                    ? 'bg-neutral-800/50 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border border-neutral-800 hover:border-neutral-700'
-                                    : 'bg-stone-50 text-stone-500 hover:bg-stone-100 hover:text-stone-700 border border-stone-200 hover:border-stone-300'
-                              }`}
-                            >
-                              {opt.label}
-                            </button>
-                          ))}
-                        </div>
-
-                        {/* Custom Duration Input */}
-                        <div className={`flex items-center gap-3 p-3 rounded-xl border ${
-                          dark ? 'bg-neutral-800/40 border-neutral-700/60' : 'bg-stone-50/60 border-stone-200/80'
-                        }`}>
-                          <span className={`text-[10px] font-medium flex-shrink-0 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
-                            Custom
-                          </span>
-                          <div className="flex-1 flex items-center gap-2">
-                            <input
-                              type="range"
-                              min={1}
-                              max={120}
-                              value={duration}
-                              onChange={(e) => setDuration(parseInt(e.target.value))}
-                              className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer accent-amber-500 bg-neutral-600/30 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-amber-500 [&::-webkit-slider-thumb]:shadow-[0_0_6px_rgba(217,160,50,0.3)]"
-                            />
-                            <input
-                              type="number"
-                              min={1}
-                              max={120}
-                              value={duration}
-                              onChange={(e) => setDuration(Math.max(1, Math.min(120, parseInt(e.target.value) || 1)))}
-                              className={`w-16 px-2 py-1.5 rounded-lg text-sm text-center outline-none transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
-                                dark
-                                  ? 'bg-neutral-800 border border-neutral-700 text-neutral-200 focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20'
-                                  : 'bg-white border border-stone-300 text-neutral-900 focus:border-amber-500 focus:ring-1 focus:ring-amber-500/15'
-                              }`}
-                            />
-                            <span className={`text-[11px] flex-shrink-0 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
-                              sec
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Style - Image only */}
-                    {mediaType === 'image' && (
-                      <div>
-                        <label className={`text-xs font-medium block mb-2.5 ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>
-                          Style
-                        </label>
-                        <StyleSelector value={style} onChange={setStyle} dark={dark} />
-                      </div>
-                    )}
+                    {/* Spacer + Actions on the right */}
+                    <div className="flex-1" />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setShowApiSettings(!showApiSettings)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          showApiSettings
+                            ? dark ? 'bg-amber-500/15 text-amber-300 border border-amber-500/25' : 'bg-amber-50 text-amber-700 border border-amber-200'
+                            : dark ? 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 border border-transparent' : 'text-stone-500 hover:text-stone-700 hover:bg-stone-100 border border-transparent'
+                        }`}
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m0 0a3 3 0 01-3 3m3-3H5.25M5.25 15.75a3 3 0 01-3-3m3 3a3 3 0 013-3m-3 3v6" />
+                        </svg>
+                        API Key
+                        {myApiKey && <span className={`w-1.5 h-1.5 rounded-full ${dark ? 'bg-emerald-400' : 'bg-emerald-500'}`} />}
+                      </button>
+                      <Button
+                        onClick={handleGenerate}
+                        loading={generating}
+                        disabled={!prompt.trim() || generating}
+                        size="sm"
+                        className="!px-5 !py-1.5 !text-xs !font-bold !rounded-lg whitespace-nowrap"
+                      >
+                        {generating ? 'Generating...' : `Generate ${mediaType === 'image' ? 'Image' : 'Video'}`}
+                      </Button>
+                    </div>
                   </div>
-
-                  {/* Generate Button */}
-                  <Button
-                    onClick={handleGenerate}
-                    loading={generating}
-                    disabled={!prompt.trim() || generating}
-                    className="w-full !py-4 !text-base !font-bold !rounded-2xl"
-                  >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
-                    </svg>
-                    {generating
-                      ? `Generating ${mediaType === 'image' ? 'Image' : 'Video'}...`
-                      : `Generate ${mediaType === 'image' ? 'Image' : 'Video'} — ${width}×${height}${mediaType === 'video' ? ` · ${duration}s` : ''}`
-                    }
-                  </Button>
                 </div>
 
-                {/* Right Column - Preview & Gallery */}
-                <div className="lg:col-span-2 space-y-5">
-                  {/* Live Preview */}
-                  <div className={`rounded-2xl p-5 border transition-all duration-300 ${
+                {/* API Settings drawer */}
+                {showApiSettings && (
+                  <div className={`rounded-xl border mb-4 px-4 py-3 transition-all duration-300 ${
                     dark ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white/90 border-stone-200 shadow-sm'
                   }`}>
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className={`text-sm font-bold ${dark ? 'text-neutral-200' : 'text-neutral-800'}`}>
-                        Preview
-                      </h3>
-                      <span className={`text-[10px] ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
-                        {width}×{height}px
-                      </span>
-                    </div>
-                    <div className={`max-h-[300px] rounded-xl overflow-hidden flex items-center justify-center ${
-                      dark ? 'bg-neutral-800/80' : 'bg-stone-100/80'
-                    }`} style={{ aspectRatio: `${width}/${height}` }}>
-                      {selectedAsset ? (
-                        selectedAsset.type === 'video' ? (
-                          <video src={selectedAsset.url} controls className="max-w-full max-h-full object-contain" />
-                        ) : (
-                          <img src={selectedAsset.url} alt="Preview" className="max-w-full max-h-full object-contain" />
-                        )
-                      ) : (
-                        <div className="text-center p-6">
-                          <div className={`text-4xl mb-2 ${mediaType === 'image' ? '' : 'opacity-50'}`}>
-                            {mediaType === 'image' ? '🖼️' : '🎬'}
-                          </div>
-                          <p className={`text-[11px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
-                            {generatedAssets.length > 0
-                              ? 'Select an asset below to preview'
-                              : 'Generate your first asset to see it here'}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                    {selectedAsset && (
-                      <div className="flex items-center justify-between mt-3">
-                        <div className={`text-[10px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
-                          {selectedAsset.prompt?.slice(0, 60)}...
-                        </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={myApiKey}
+                        onChange={(e) => setMyApiKey(e.target.value)}
+                        placeholder="Enter your Google AI API key..."
+                        className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-mono outline-none ${
+                          dark ? 'bg-neutral-800 border border-neutral-700 text-neutral-200 placeholder-neutral-500' : 'bg-stone-50 border border-stone-300 text-neutral-900 placeholder-neutral-400'
+                        }`}
+                      />
+                      <button
+                        onClick={handleSaveApiKey}
+                        disabled={apiKeySaving}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-medium transition-all flex-shrink-0 ${
+                          apiKeySaving
+                            ? dark ? 'bg-neutral-800 text-neutral-500' : 'bg-stone-100 text-stone-400'
+                            : dark ? 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                        }`}
+                      >
+                        {apiKeySaving ? 'Saving...' : 'Save'}
+                      </button>
+                      {myApiKey && (
                         <button
-                          onClick={() => setSelectedAsset(null)}
-                          className={`text-[10px] font-medium ${
-                            dark ? 'text-neutral-500 hover:text-neutral-300' : 'text-stone-400 hover:text-stone-600'
-                          }`}
+                          onClick={async () => { setMyApiKey(''); try { await managerSettings.setApiKey(''); } catch {} }}
+                          className={`px-2 py-1.5 rounded-lg text-[10px] font-medium ${dark ? 'text-neutral-500 hover:text-red-400' : 'text-stone-400 hover:text-red-500'}`}
                         >
                           Clear
                         </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
+                )}
 
-                  {/* Generated Assets Gallery */}
-                  {generatedAssets.length > 0 && (
-                    <div className={`rounded-2xl p-5 border transition-all duration-300 ${
+                {/* ─── Main Content: Prompt (left) + Preview (right) ─── */}
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+                  {/* Prompt */}
+                  <div className="lg:col-span-3">
+                    <div className={`rounded-xl border h-full transition-all duration-300 ${
                       dark ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white/90 border-stone-200 shadow-sm'
                     }`}>
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className={`text-sm font-bold ${dark ? 'text-neutral-200' : 'text-neutral-800'}`}>
-                          Generated Assets
-                        </h3>
-                        <span className={`text-[10px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
-                          {generatedAssets.length} {generatedAssets.length === 1 ? 'asset' : 'assets'}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        {generatedAssets.map((asset) => (
-                          <div
-                            key={asset.id}
-                            onClick={() => setSelectedAsset(asset)}
-                            className={`relative rounded-xl overflow-hidden border cursor-pointer transition-all duration-200 group ${
-                              selectedAsset?.id === asset.id
-                                ? dark
-                                  ? 'ring-2 ring-amber-500 border-amber-500/50 shadow-[0_0_15px_rgba(217,160,50,0.12)]'
-                                  : 'ring-2 ring-amber-400 border-amber-400 shadow-md'
-                                : dark
-                                  ? 'border-neutral-700 hover:border-amber-500/30'
-                                  : 'border-stone-200 hover:border-amber-300'
+                      <textarea
+                        value={prompt}
+                        onChange={(e) => setPrompt(e.target.value)}
+                        placeholder={
+                          mediaType === 'image'
+                            ? 'Describe the image... style, lighting, colors, composition, mood...'
+                            : 'Describe the video scene... motion, camera angles, transitions, atmosphere...'
+                        }
+                        className={`w-full min-h-[160px] lg:min-h-[200px] px-4 py-3.5 text-sm outline-none transition-all duration-300 resize-none rounded-xl ${
+                          dark
+                            ? 'bg-transparent text-neutral-100 placeholder-neutral-500'
+                            : 'bg-transparent text-neutral-900 placeholder-neutral-400'
+                        }`}
+                      />
+                      <div className={`flex items-center justify-between px-4 py-2 border-t ${dark ? 'border-neutral-800' : 'border-stone-200'}`}>
+                        <button
+                          onClick={() => setShowNegative(!showNegative)}
+                          className={`text-[10px] font-medium flex items-center gap-1 transition-colors ${
+                            dark ? 'text-neutral-500 hover:text-neutral-300' : 'text-stone-400 hover:text-stone-600'
+                          }`}
+                        >
+                          <svg className={`w-3 h-3 transition-transform ${showNegative ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                          </svg>
+                          Negative
+                        </button>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>{prompt.length} chars</span>
+                          <button
+                            onClick={handleEnhancePrompt}
+                            disabled={!prompt.trim() || enhancing}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all ${
+                              enhancing
+                                ? dark ? 'bg-amber-500/10 text-amber-400/60' : 'bg-amber-50 text-amber-400'
+                                : prompt.trim()
+                                  ? dark ? 'bg-gradient-to-r from-amber-500/15 to-purple-500/15 text-amber-300 hover:from-amber-500/25 hover:to-purple-500/25' : 'bg-gradient-to-r from-amber-50 to-purple-50 text-amber-700 hover:from-amber-100 hover:to-purple-100'
+                                  : dark ? 'text-neutral-600 cursor-not-allowed' : 'text-stone-400 cursor-not-allowed'
                             }`}
                           >
-                            {asset.type === 'video' ? (
-                              <video src={asset.url} className="w-full h-20 object-cover" muted />
-                            ) : (
-                              <img src={asset.url} alt="" className="w-full h-20 object-cover" />
-                            )}
-                            <div className={`absolute inset-0 flex items-center justify-center ${
-                              selectedAsset?.id === asset.id ? '' : 'opacity-0 group-hover:opacity-100'
-                            } transition-opacity`}>
-                              {selectedAsset?.id === asset.id && (
-                                <div className="w-6 h-6 rounded-full bg-amber-500/80 flex items-center justify-center">
-                                  <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                                  </svg>
-                                </div>
-                              )}
+                            {enhancing ? 'Enhancing...' : 'Enhance AI'}
+                          </button>
+                        </div>
+                      </div>
+                      {showNegative && (
+                        <div className={`px-4 py-2 border-t ${dark ? 'border-neutral-800' : 'border-stone-200'}`}>
+                          <textarea
+                            value={negativePrompt}
+                            onChange={(e) => setNegativePrompt(e.target.value)}
+                            placeholder="Things to avoid..."
+                            rows={2}
+                            className={`w-full px-3 py-2 rounded-lg text-xs outline-none resize-none ${
+                              dark ? 'bg-neutral-800/60 text-neutral-400 placeholder-neutral-600' : 'bg-stone-50/60 text-neutral-500 placeholder-neutral-400'
+                            }`}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Preview */}
+                  <div className="lg:col-span-2">
+                    <div className={`rounded-xl border h-full flex flex-col transition-all duration-300 ${
+                      dark ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white/90 border-stone-200 shadow-sm'
+                    }`}>
+                      <div className="flex items-center justify-between px-4 py-2.5 border-b">
+                        <h3 className={`text-xs font-semibold ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>Preview</h3>
+                        <span className={`text-[9px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>{width}×{height}</span>
+                      </div>
+                      <div className="flex-1 flex items-center justify-center p-4" style={{ aspectRatio: `${width}/${height}` }}>
+                        {selectedAsset ? (
+                          selectedAsset.type === 'video' ? (
+                            <video src={selectedAsset.url} controls className="max-w-full max-h-full rounded-lg object-contain" />
+                          ) : (
+                            <img src={selectedAsset.url} alt="" className="max-w-full max-h-full rounded-lg object-contain" />
+                          )
+                        ) : (
+                          <div className={`flex flex-col items-center gap-2 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${dark ? 'bg-neutral-800' : 'bg-stone-100'}`}>
+                              {mediaType === 'image' ? '🖼️' : '🎬'}
                             </div>
-                            {/* Edit button */}
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleEditAsset(asset); }}
-                              className={`absolute top-1 left-1 p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-all ${
-                                dark ? 'bg-neutral-900/80 text-amber-400 hover:bg-amber-500/20' : 'bg-white/80 text-amber-600 hover:bg-amber-50 shadow'
-                              }`}
-                              title="Edit this asset"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-                              </svg>
-                            </button>
-                            {/* Merge button (video only) */}
-                            {asset.type === 'video' && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); setMode('merge'); }}
-                                className={`absolute top-8 left-1 p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-all ${
-                                  dark ? 'bg-neutral-900/80 text-purple-400 hover:bg-purple-500/20' : 'bg-white/80 text-purple-600 hover:bg-purple-50 shadow'
-                                }`}
-                                title="Add to video merge"
-                              >
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 8.25H7.5a2.25 2.25 0 00-2.25 2.25v9a2.25 2.25 0 002.25 2.25h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25H15M9 12l3 3m0 0l3-3m-3 3V2.25" />
-                                </svg>
-                              </button>
+                            <p className="text-[10px]">Preview will appear here</p>
+                          </div>
+                        )}
+                      </div>
+                      {selectedAsset && (
+                        <div className={`flex items-center justify-between px-4 py-2 border-t ${dark ? 'border-neutral-800' : 'border-stone-200'}`}>
+                          <span className={`text-[10px] truncate max-w-[150px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>{selectedAsset.prompt?.slice(0, 40)}</span>
+                          <button onClick={() => setSelectedAsset(null)} className="text-[9px] font-medium text-red-400 hover:text-red-500">Clear</button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ─── Generated Assets Gallery ─── */}
+                {generatedAssets.length > 0 && (
+                  <div className={`rounded-xl border mt-4 px-4 py-3 transition-all duration-300 ${
+                    dark ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white/90 border-stone-200 shadow-sm'
+                  }`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className={`text-xs font-semibold ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>
+                        Generated Assets <span className={`text-[9px] font-normal ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>({generatedAssets.length})</span>
+                      </h3>
+                    </div>
+                    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
+                      {generatedAssets.map((asset) => (
+                        <div
+                          key={asset.id}
+                          onClick={() => setSelectedAsset(asset)}
+                          className={`relative rounded-lg overflow-hidden border cursor-pointer transition-all duration-200 group ${
+                            selectedAsset?.id === asset.id
+                              ? dark ? 'ring-2 ring-amber-500 border-amber-500/50' : 'ring-2 ring-amber-400 border-amber-400'
+                              : dark ? 'border-neutral-700 hover:border-amber-500/30' : 'border-stone-200 hover:border-amber-300'
+                          }`}
+                        >
+                          <div className="w-full aspect-square">
+                            {asset.type === 'video' ? (
+                              <video src={asset.url} className="w-full h-full object-cover" muted />
+                            ) : (
+                              <img src={asset.url} alt="" className="w-full h-full object-cover" />
                             )}
-                            {/* Delete button */}
-                            <button
-                              onClick={(e) => { e.stopPropagation(); removeAsset(asset.id); }}
-                              className={`absolute top-1 right-1 p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-all ${
-                                dark ? 'bg-neutral-900/80 text-red-400 hover:bg-red-500/20' : 'bg-white/80 text-red-500 hover:bg-red-50 shadow'
-                              }`}
-                            >
-                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                            <div className={`absolute bottom-1 left-1 px-1.5 py-0.5 rounded text-[8px] font-medium ${
-                              dark ? 'bg-neutral-900/80 text-neutral-500' : 'bg-white/80 text-stone-400'
-                            }`}>
-                              {asset.width}×{asset.height}
-                              {asset.type === 'video' && asset.duration ? ` · ${asset.duration}s` : ''}
+                          </div>
+                          <div className={`absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20`}>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleEditAsset(asset); }}
+                                className="w-5 h-5 rounded flex items-center justify-center bg-white/80 text-stone-700 hover:bg-white text-xs"
+                              >✏️</button>
+                              {asset.type === 'video' && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setMode('merge'); }}
+                                  className="w-5 h-5 rounded flex items-center justify-center bg-white/80 text-stone-700 hover:bg-white text-xs"
+                                >🎞️</button>
+                              )}
+                              <button
+                                onClick={(e) => { e.stopPropagation(); removeAsset(asset.id); }}
+                                className="w-5 h-5 rounded flex items-center justify-center bg-white/80 text-red-500 hover:bg-white text-xs"
+                              >🗑️</button>
                             </div>
                           </div>
-                        ))}
-                      </div>
+                          <div className={`absolute bottom-0.5 left-0.5 px-1 py-0.5 rounded text-[7px] font-medium ${
+                            dark ? 'bg-neutral-900/80 text-neutral-500' : 'bg-white/80 text-stone-400'
+                          }`}>
+                            {asset.width}×{asset.height}{asset.type === 'video' && asset.duration ? ` · ${asset.duration}s` : ''}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

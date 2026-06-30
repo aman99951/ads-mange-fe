@@ -19,6 +19,7 @@ import ManagerCreateCreative from './pages/ManagerCreateCreative';
 import DeveloperLogin from './pages/DeveloperLogin';
 import DeveloperRegister from './pages/DeveloperRegister';
 import DeveloperDashboard from './pages/DeveloperDashboard';
+import DeveloperCampaigns from './pages/DeveloperCampaigns';
 import DeveloperPlayground from './pages/DeveloperPlayground';
 import Navbar from './components/layout/Navbar';
 import { ROUTES } from './constants';
@@ -34,9 +35,11 @@ function ScrollToTop() {
 function AppContent() {
   const { user, login, logout } = useAuth();
   const { dark } = useTheme();
+  const location = useLocation();
   const isManager = user?.role === 'manager';
   const isDeveloper = user?.role === 'developer';
   const isClient = user && !isManager && !isDeveloper;
+  const hideNavbar = location.pathname === ROUTES.MANAGER_CREATE_CREATIVE;
 
   const getHomeRoute = () => {
     if (isManager) return ROUTES.MANAGER_DASHBOARD;
@@ -45,9 +48,9 @@ function AppContent() {
   };
 
   return (
-    <BrowserRouter>
+    <>
       <ScrollToTop />
-      {user && <Navbar user={user} onLogout={logout} />}
+      {user && !hideNavbar && <Navbar user={user} onLogout={logout} />}
       <div className={`min-h-screen transition-colors duration-500 ${t('page')(dark)}`}>
         <Routes>
           <Route path={ROUTES.LANDING} element={user ? <Navigate to={getHomeRoute()} replace /> : <Landing />} />
@@ -69,19 +72,22 @@ function AppContent() {
           <Route path={ROUTES.DEVELOPER_LOGIN} element={isDeveloper ? <Navigate to={ROUTES.DEVELOPER_DASHBOARD} replace /> : <DeveloperLogin onLogin={login} />} />
           <Route path={ROUTES.DEVELOPER_REGISTER} element={isDeveloper ? <Navigate to={ROUTES.DEVELOPER_DASHBOARD} replace /> : <DeveloperRegister onRegister={login} />} />
           <Route path={ROUTES.DEVELOPER_DASHBOARD} element={isDeveloper ? <DeveloperDashboard user={user} /> : <Navigate to={ROUTES.DEVELOPER_LOGIN} replace />} />
+          <Route path={ROUTES.DEVELOPER_CAMPAIGNS} element={isDeveloper ? <DeveloperCampaigns user={user} /> : <Navigate to={ROUTES.DEVELOPER_LOGIN} replace />} />
           <Route path={ROUTES.DEVELOPER_PLAYGROUND} element={isDeveloper ? <DeveloperPlayground /> : <Navigate to={ROUTES.DEVELOPER_LOGIN} replace />} />
 
           <Route path="*" element={<Navigate to={user ? getHomeRoute() : ROUTES.LANDING} replace />} />
         </Routes>
       </div>
-    </BrowserRouter>
+    </>
   );
 }
 
 export default function App() {
   return (
     <ThemeProvider>
-      <AppContent />
+      <BrowserRouter>
+        <AppContent />
+      </BrowserRouter>
     </ThemeProvider>
   );
 }
