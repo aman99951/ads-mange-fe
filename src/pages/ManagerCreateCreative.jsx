@@ -318,7 +318,7 @@ async function mergeVideosClientSide(clips, outputW, outputH, fps = 30, onProgre
 
 /* ───────── Sub-components ───────── */
 
-function Sidebar({ dark, mode, activeMediaType, onModeChange, onMediaTypeChange, onNewTemplate }) {
+function Sidebar({ dark, mode, activeMediaType, onModeChange, onMediaTypeChange, onNewTemplate, generatedAssets = [] }) {
   return (
     <div className={`w-[220px] flex-shrink-0 flex flex-col h-full ${
       dark ? 'bg-neutral-900/90 border-r border-neutral-800' : 'bg-white/90 border-r border-stone-200'
@@ -358,37 +358,36 @@ function Sidebar({ dark, mode, activeMediaType, onModeChange, onMediaTypeChange,
         </div>
 
         {/* Recent */}
-        <div>
-          <h3 className={`text-[9px] font-semibold uppercase tracking-wider mb-2 ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
-            Recent
-          </h3>
-          <div className="space-y-1">
-            {RECENT_PLACEHOLDERS.map((item) => (
-              <button
-                key={item.id}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all ${
-                  dark
-                    ? 'text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300'
-                    : 'text-stone-400 hover:bg-stone-100 hover:text-stone-600'
-                }`}
-              >
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs ${
-                  dark ? 'bg-neutral-800' : 'bg-stone-100'
-                }`}>
-                  {item.type === 'video' ? '🎬' : '🖼️'}
-                </div>
-                <div className="flex-1 text-left min-w-0">
-                  <div className={`font-medium truncate ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>
-                    {item.label}
+        {generatedAssets.length > 0 && (
+          <div>
+            <h3 className={`text-[9px] font-semibold uppercase tracking-wider mb-2 ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
+              Recent
+            </h3>
+            <div className="space-y-1">
+              {[...generatedAssets].reverse().slice(0, 5).map((item) => (
+                <button
+                  key={item.id}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all ${
+                    dark
+                      ? 'text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300'
+                      : 'text-stone-400 hover:bg-stone-100 hover:text-stone-600'
+                  }`}
+                >
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs ${
+                    dark ? 'bg-neutral-800' : 'bg-stone-100'
+                  }`}>
+                    {item.type === 'video' ? '🎬' : '🖼️'}
                   </div>
-                  <div className={`text-[8px] ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
-                    {item.date}
+                  <div className="flex-1 text-left min-w-0">
+                    <div className={`font-medium truncate ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>
+                      {item.prompt || 'Untitled'}
+                    </div>
                   </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -484,13 +483,6 @@ function TransitionSelector({ value, onChange, dark }) {
     </div>
   );
 }
-
-const RECENT_PLACEHOLDERS = [
-  { id: 1, label: 'Summer Sale Banner', type: 'image', date: '2 hours ago' },
-  { id: 2, label: 'Product Showcase', type: 'video', date: '5 hours ago' },
-  { id: 3, label: 'Brand Story Ad', type: 'image', date: '1 day ago' },
-  { id: 4, label: 'Festival Promo', type: 'video', date: '2 days ago' },
-];
 
 /* ───────── Video Merger Panel ───────── */
 function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError }) {
@@ -751,7 +743,7 @@ function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError 
           className="w-full !py-3.5 !text-sm !font-bold !rounded-2xl"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 8.25H7.5a2.25 2.25 0 00-2.25 2.25v9a2.25 2.25 0 002.25 2.25h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25H15M9 12l3 3m0 0l3-3m-3 3V2.25\" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 8.25H7.5a2.25 2.25 0 00-2.25 2.25v9a2.25 2.25 0 002.25 2.25h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25H15M9 12l3 3m0 0l3-3m-3 3V2.25" />
           </svg>
           {merging
             ? `Merging... ${mergeProgress}%`
@@ -801,15 +793,16 @@ function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError 
 }
 
 const IMAGE_MODELS_DEFAULT = [
-  { id: 'gemini-2.5-flash-image', name: 'Nano Banana', credit_cost: 2, description: 'Fast, efficient (Gemini 2.5 Flash)', provider: 'google', api_type: 'interactions' },
-  { id: 'gemini-3.1-flash-image', name: 'Nano Banana 2', credit_cost: 3, description: 'High-efficiency (Gemini 3.1 Flash)', provider: 'google', api_type: 'interactions' },
-  { id: 'gemini-3-pro-image', name: 'Nano Banana Pro', credit_cost: 5, description: 'Professional quality', provider: 'google', is_premium: true, api_type: 'interactions' },
+  { id: 'gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image', credit_cost: 2, description: 'Fast image generation — 2 credits', provider: 'google', api_type: 'generateContent' },
+  { id: 'gemini-3.1-flash-image', name: 'Gemini 3.1 Flash Image', credit_cost: 3, description: 'High-efficiency — 3 credits', provider: 'google', api_type: 'generateContent' },
+  { id: 'gemini-3.1-flash-lite-image', name: 'Gemini 3.1 Flash Lite', credit_cost: 1, description: 'Fastest, cheapest — 1 credit', provider: 'google', api_type: 'generateContent' },
+  { id: 'gemini-3-pro-image', name: 'Gemini 3 Pro Image', credit_cost: 5, description: 'Professional quality — 5 credits', provider: 'google', is_premium: true, api_type: 'generateContent' },
 ];
 
 const VIDEO_MODELS_DEFAULT = [
   { id: 'veo-3.1-generate-preview', name: 'Veo 3.1', credit_cost: 8, description: 'Latest cinematic video generation' },
-  { id: 'veo-3.0-generate-001', name: 'Veo 3.0', credit_cost: 5, description: 'High-quality video generation' },
-  { id: 'veo-3.0-fast-001', name: 'Veo 3.0 Fast', credit_cost: 4, description: 'Faster video generation' },
+  { id: 'veo-3.1-fast-generate-preview', name: 'Veo 3.1 Fast', credit_cost: 6, description: 'Faster generation, good quality' },
+  { id: 'veo-3.1-lite-generate-preview', name: 'Veo 3.1 Lite', credit_cost: 4, description: 'Fastest, lightweight option' },
 ];
 
 export default function ManagerCreateCreative() {
@@ -822,6 +815,11 @@ export default function ManagerCreateCreative() {
   const campaignLanguages = location.state?.languages || [];
   const campaignMediaType = location.state?.mediaType || 'image';
   const campaignDimensions = location.state?.dimensions || '';
+  const videoFeedback = location.state?.videoFeedback || [];
+  const revisionSummary = location.state?.revisionSummary || '';
+  const adId = location.state?.adId || null;
+  const adFinalAsset = location.state?.finalAsset || null;
+  const adLanguageAssets = location.state?.languageAssets || [];
   const [mediaType, setMediaType] = useState(campaignMediaType);
   const [selectedLanguage, setSelectedLanguage] = useState(null);
   // Build prompt from base description + selected language
@@ -834,9 +832,15 @@ export default function ManagerCreateCreative() {
     campaignDimensions ? parseInt(campaignDimensions.split('x')[1], 10) || 1024 : 1024
   );
   const [style, setStyle] = useState(null);
-  const [duration, setDuration] = useState(5);
+  const [duration, setDuration] = useState(8);
+  const formatTimestamp = (seconds) => {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
   const [enhancing, setEnhancing] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [showRevisionPanel, setShowRevisionPanel] = useState(true);
   const [generatedAssets, setGeneratedAssets] = useState([]);
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [showNegative, setShowNegative] = useState(false);
@@ -844,8 +848,8 @@ export default function ManagerCreateCreative() {
   // Model selection state
   const [imageModels, setImageModels] = useState(IMAGE_MODELS_DEFAULT);
   const [videoModels, setVideoModels] = useState(VIDEO_MODELS_DEFAULT);
-  const [selectedImageModel, setSelectedImageModel] = useState(IMAGE_MODELS_DEFAULT[0].id); // Nano Banana
-  const [selectedVideoModel, setSelectedVideoModel] = useState(VIDEO_MODELS_DEFAULT[1].id);
+  const [selectedImageModel, setSelectedImageModel] = useState(IMAGE_MODELS_DEFAULT[0].id); // Gemini 2.5 Flash Image
+  const [selectedVideoModel, setSelectedVideoModel] = useState(VIDEO_MODELS_DEFAULT[0].id);
   // Google API daily usage quota (real credits)
   const [googleApiQuota, setGoogleApiQuota] = useState(null);
   // Manager's own API key
@@ -853,20 +857,32 @@ export default function ManagerCreateCreative() {
   const [myApiKey, setMyApiKey] = useState('');
   const [apiKeySaving, setApiKeySaving] = useState(false);
   const [notification, setNotification] = useState(null);
+  const [recentMedia, setRecentMedia] = useState([]);
+  const [showSidebar, setShowSidebar] = useState(false);
 
   // Fetch models and Google API usage stats on mount
   useEffect(() => {
     fetchModels();
     fetchUsageStats();
     fetchMyApiKey();
+    fetchRecentMedia();
   }, []);
 
   const fetchUsageStats = async () => {
     try {
       const data = await ads.getUsageStats();
-      if (data?.daily_limit) setGoogleApiQuota(data);
+      if (data) setGoogleApiQuota(data);
     } catch (err) {
       // Ignore if API unavailable
+    }
+  };
+
+  const fetchRecentMedia = async () => {
+    try {
+      const data = await ads.getRecentMedia();
+      if (data) setRecentMedia(data);
+    } catch (err) {
+      // Ignore
     }
   };
 
@@ -961,24 +977,29 @@ export default function ManagerCreateCreative() {
         });
         setGeneratedAssets(prev => [...prev, {
           type: 'image', url: result.url, prompt: prompt.trim(),
-          width, height, style, model: result.model_used, id: Date.now()
+          width, height, style, model: result.model_used,
+          id: Date.now(), mediaId: result.generated_media_id,
         }]);
         // Refresh Google API quota after generation
         fetchUsageStats();
+        fetchRecentMedia();
       } else {
-        const safeDuration = Math.max(4, Math.min(8, duration));
+        const perClipDuration = duration > 8 ? 8 : [4, 6, 8].reduce((a, b) => Math.abs(b - duration) < Math.abs(a - duration) ? b : a);
         const result = await ads.generateVideoClip({
           prompt: prompt.trim(),
           aspect_ratio: aspectRatio,
-          duration_seconds: safeDuration,
+          duration_seconds: perClipDuration,
+          target_duration_seconds: duration,
           model: selectedVideoModel,
         });
         setGeneratedAssets(prev => [...prev, {
           type: 'video', url: result.url, prompt: prompt.trim(),
-          width, height, duration, model: result.model_used, id: Date.now()
+          width, height, duration, model: result.model_used,
+          id: Date.now(), mediaId: result.generated_media_id,
         }]);
         // Refresh Google API quota after generation
         fetchUsageStats();
+        fetchRecentMedia();
       }
     } catch (err) {
       if (err.data?.google_api_quota) setGoogleApiQuota(err.data.google_api_quota);
@@ -986,6 +1007,30 @@ export default function ManagerCreateCreative() {
       setError(err.message);
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const [publishing, setPublishing] = useState(false);
+
+  const handlePublishToCampaign = async () => {
+    if (!adId || generatedAssets.length === 0) return;
+    const assetIds = generatedAssets.map(a => a.mediaId).filter(Boolean);
+    if (assetIds.length === 0) {
+      setError('No saved media found. Please generate new assets in this session.');
+      return;
+    }
+    setPublishing(true);
+    try {
+      await ads.saveGeneratedAssets(adId, { asset_ids: assetIds });
+      setNotification('Published to campaign! Client will be notified.');
+      setGeneratedAssets([]);
+      setTimeout(() => {
+        navigate('/manager/dashboard');
+      }, 2000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPublishing(false);
     }
   };
 
@@ -1022,7 +1067,21 @@ export default function ManagerCreateCreative() {
           onModeChange={setMode}
           onMediaTypeChange={setMediaType}
           onNewTemplate={handleNewTemplate}
+          generatedAssets={generatedAssets}
         />
+
+        {/* Recent Media toggle */}
+        <button
+          onClick={() => setShowSidebar(!showSidebar)}
+          className={`fixed right-0 top-1/2 -translate-y-1/2 z-30 px-1.5 py-3 rounded-l-lg text-xs transition-colors ${
+            dark ? 'bg-neutral-800 text-neutral-400 hover:text-white' : 'bg-white text-stone-500 hover:text-stone-900 shadow-md'
+          }`}
+          title="Recent media"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.41a2.25 2.25 0 013.182 0l2.909 2.91m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+          </svg>
+        </button>
 
         {/* Main Content */}
         <div className="flex-1 overflow-auto">
@@ -1196,6 +1255,228 @@ export default function ManagerCreateCreative() {
                   </div>
                 )}
 
+                {/* ─── Revision Feedback Panel ─── */}
+                {showRevisionPanel && (videoFeedback.length > 0 || revisionSummary) && (
+                  <div className={`mb-4 rounded-xl border-2 overflow-hidden animate-fade-in-up ${
+                    dark ? 'bg-amber-500/5 border-amber-500/30' : 'bg-amber-50 border-amber-300'
+                  }`}>
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-amber-500/20">
+                      <div className="flex items-center gap-2">
+                        <div className={`p-1.5 rounded-lg ${dark ? 'bg-amber-500/15' : 'bg-amber-100'}`}>
+                          <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h4 className={`text-xs font-bold ${dark ? 'text-amber-300' : 'text-amber-800'}`}>Revision Request — Client Feedback</h4>
+                          <p className={`text-[10px] ${dark ? 'text-amber-400/70' : 'text-amber-600'}`}>{videoFeedback.length} comment{videoFeedback.length !== 1 ? 's' : ''} — address the feedback below, then generate a new version.</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setShowRevisionPanel(false)}
+                        className={`p-1 rounded-lg transition-colors ${dark ? 'text-amber-400/50 hover:text-amber-300 hover:bg-amber-500/10' : 'text-amber-600/50 hover:text-amber-800 hover:bg-amber-100'}`}>
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="px-4 py-3 space-y-2 max-h-60 overflow-y-auto">
+                      {videoFeedback.map((fb, i) => (
+                        <div key={fb.id || i} className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg text-xs border ${
+                          dark ? 'bg-neutral-800/60 border-neutral-700/50' : 'bg-white border-stone-200'
+                        }`}>
+                          <div className="w-1 h-full min-h-[1.5rem] rounded-full flex-shrink-0 bg-amber-500" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                              {fb.timestamp_seconds != null && (
+                                <span className={`px-1 py-0.5 rounded text-[9px] font-mono font-bold ${
+                                  dark ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-100 text-amber-700'
+                                }`}>
+                                  {(() => {
+                                    const m = Math.floor(fb.timestamp_seconds / 60);
+                                    const s = Math.floor(fb.timestamp_seconds % 60);
+                                    return `${m}:${s.toString().padStart(2, '0')}`;
+                                  })()}
+                                </span>
+                              )}
+                              {fb.language_name && (
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
+                                  dark ? 'bg-purple-500/10 text-purple-300' : 'bg-purple-100 text-purple-700'
+                                }`}>
+                                  {fb.language_name}
+                                </span>
+                              )}
+                              <span className={`text-[9px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
+                                {fb.user_name || 'Client'}
+                              </span>
+                            </div>
+                            <p className={dark ? 'text-neutral-200' : 'text-neutral-800'}>{fb.comment}</p>
+                          </div>
+                        </div>
+                      ))}
+                      {revisionSummary && (
+                        <div className={`px-3 py-2.5 rounded-lg text-xs border-l-4 ${
+                          dark ? 'bg-neutral-800/40 border-amber-500/30 text-neutral-400' : 'bg-amber-50/50 border-amber-400 text-amber-800'
+                        }`}>
+                          <span className="font-semibold">Summary: </span>{revisionSummary}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ─── Review & Send Back to Client ─── */}
+                {adId && (adFinalAsset || adLanguageAssets.length > 0) && (
+                  <div className={`mb-4 rounded-xl border overflow-hidden animate-fade-in-up ${
+                    dark ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white/90 border-stone-200 shadow-sm'
+                  }`}>
+                    <div className={`px-4 py-3 border-b flex items-center justify-between ${
+                      dark ? 'border-neutral-800' : 'border-stone-200'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <div className={`p-1.5 rounded-lg ${dark ? 'bg-purple-500/10' : 'bg-purple-100'}`}>
+                          <svg className="w-4 h-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h4 className={`text-xs font-bold ${dark ? 'text-neutral-200' : 'text-neutral-800'}`}>Current Ad Videos — Client Comments</h4>
+                          <p className={`text-[10px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
+                            Review client feedback below, then generate new assets above.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="px-4 py-3 space-y-4">
+                      {/* Main video */}
+                      {adFinalAsset && (
+                        <div className={`rounded-xl border overflow-hidden ${
+                          dark ? 'border-neutral-800' : 'border-stone-200'
+                        }`}>
+                          <div className={`px-3 py-2 border-b flex items-center justify-between ${
+                            dark ? 'border-neutral-800' : 'border-stone-100'
+                          }`}>
+                            <span className={`text-xs font-semibold ${dark ? 'text-neutral-200' : 'text-neutral-800'}`}>Main Video</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono ${
+                              dark ? 'bg-neutral-800 text-neutral-400' : 'bg-stone-100 text-stone-500'
+                            }`}>
+                              {adFinalAsset.width}×{adFinalAsset.height}
+                            </span>
+                          </div>
+                          <div className="p-3">
+                            <video
+                              src={adFinalAsset}
+                              controls
+                              className="w-full rounded-lg"
+                              style={{ maxHeight: 240 }}
+                            />
+                            {/* Client feedback for main video */}
+                            {videoFeedback.filter(fb => !fb.language_asset).length > 0 && (
+                              <div className="mt-2 space-y-1">
+                                {videoFeedback.filter(fb => !fb.language_asset).map((fb, i) => (
+                                  <div key={fb.id || i} className={`flex items-start gap-2 px-2 py-1.5 rounded-lg text-[10px] ${
+                                    dark ? 'bg-neutral-800/60' : 'bg-stone-50'
+                                  }`}>
+                                    {fb.timestamp_seconds != null && (
+                                      <span className={`px-1 py-0.5 rounded font-mono font-bold flex-shrink-0 ${
+                                        dark ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-100 text-amber-700'
+                                      }`}>
+                                        {formatTimestamp(fb.timestamp_seconds)}
+                                      </span>
+                                    )}
+                                    <span className={dark ? 'text-neutral-300' : 'text-neutral-700'}>{fb.user_name || 'Client'}: </span>
+                                    <span className={dark ? 'text-neutral-400' : 'text-stone-500'}>{fb.comment}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {/* Language assets */}
+                      {adLanguageAssets.map((la) => (
+                        <div key={la.id} className={`rounded-xl border overflow-hidden ${
+                          dark ? 'border-neutral-800' : 'border-stone-200'
+                        }`}>
+                          <div className={`px-3 py-2 border-b flex items-center justify-between ${
+                            dark ? 'border-neutral-800' : 'border-stone-100'
+                          }`}>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs font-semibold ${dark ? 'text-neutral-200' : 'text-neutral-800'}`}>{la.language_name || 'Language Asset'}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
+                                dark ? 'bg-purple-500/10 text-purple-300' : 'bg-purple-100 text-purple-700'
+                              }`}>
+                                {la.language_code?.toUpperCase()}
+                              </span>
+                            </div>
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono ${
+                              dark ? 'bg-neutral-800 text-neutral-400' : 'bg-stone-100 text-stone-500'
+                            }`}>
+                              {la.width}×{la.height}
+                            </span>
+                          </div>
+                          <div className="p-3">
+                            <video
+                              src={la.asset}
+                              controls
+                              className="w-full rounded-lg"
+                              style={{ maxHeight: 240 }}
+                            />
+                            {/* Client feedback for this language asset */}
+                            {videoFeedback.filter(fb => fb.language_asset === la.id).length > 0 && (
+                              <div className="mt-2 space-y-1">
+                                {videoFeedback.filter(fb => fb.language_asset === la.id).map((fb, i) => (
+                                  <div key={fb.id || i} className={`flex items-start gap-2 px-2 py-1.5 rounded-lg text-[10px] ${
+                                    dark ? 'bg-neutral-800/60' : 'bg-stone-50'
+                                  }`}>
+                                    {fb.timestamp_seconds != null && (
+                                      <span className={`px-1 py-0.5 rounded font-mono font-bold flex-shrink-0 ${
+                                        dark ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-100 text-amber-700'
+                                      }`}>
+                                        {formatTimestamp(fb.timestamp_seconds)}
+                                      </span>
+                                    )}
+                                    <span className={dark ? 'text-neutral-300' : 'text-neutral-700'}>{fb.user_name || 'Client'}: </span>
+                                    <span className={dark ? 'text-neutral-400' : 'text-stone-500'}>{fb.comment}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {/* Publish to Campaign — only when new AI assets exist */}
+                      {generatedAssets.length > 0 && adId && (
+                        <div className="flex justify-end pt-3 border-t border-neutral-800/30">
+                          <button
+                            onClick={handlePublishToCampaign}
+                            disabled={publishing}
+                            className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all disabled:opacity-40 flex items-center gap-2 ${
+                              dark ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border border-emerald-200'
+                            }`}
+                          >
+                            {publishing ? (
+                              <>
+                                <svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                                </svg>
+                                Publishing...
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                Publish to Campaign
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* ─── Top Toolbar: Model, Dimensions, Style, Duration, Generate ─── */}
                 <div className={`rounded-xl border transition-all duration-300 px-4 py-3 mb-4 ${
                   dark ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white/90 border-stone-200 shadow-sm'
@@ -1306,14 +1587,14 @@ export default function ManagerCreateCreative() {
                         <input
                           type="number"
                           min={4}
-                          max={8}
+                          max={60}
                           value={duration}
-                          onChange={(e) => setDuration(Math.max(4, Math.min(8, parseInt(e.target.value) || 4)))}
+                          onChange={(e) => setDuration(Math.max(4, Math.min(60, parseInt(e.target.value) || 4)))}
                           className={`w-12 px-1.5 py-1.5 rounded-lg text-xs text-center outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
                             dark ? 'bg-neutral-800 border border-neutral-700 text-neutral-200' : 'bg-stone-50 border border-stone-300 text-neutral-900'
                           }`}
                         />
-                        <span className={`text-[10px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>sec (4-8)</span>
+                        <span className={`text-[10px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>sec (max 60)</span>
                       </div>
                     ) : (
                       <div className="flex items-center gap-1 flex-wrap">
@@ -1585,6 +1866,46 @@ export default function ManagerCreateCreative() {
                 )}
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Recent Media Sidebar */}
+        <div className={`border-l transition-all duration-300 overflow-hidden ${
+          dark ? 'border-neutral-700 bg-neutral-900' : 'border-stone-200 bg-white'
+        } ${showSidebar ? 'w-72' : 'w-0'}`}>
+          <div className="w-72 h-full overflow-y-auto">
+            <div className={`p-4 border-b ${dark ? 'border-neutral-700' : 'border-stone-200'}`}>
+              <h3 className={`text-xs font-semibold uppercase tracking-wider ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>
+                Recent Media
+              </h3>
+            </div>
+            <div className="p-3 space-y-3">
+              {recentMedia.map((item) => (
+                <div
+                  key={item.id}
+                  className={`rounded-lg overflow-hidden border cursor-pointer transition-colors ${
+                    dark ? 'border-neutral-700 hover:border-neutral-500' : 'border-stone-200 hover:border-stone-400'
+                  }`}
+                  onClick={() => {
+                    setPrompt(item.prompt || '');
+                    setMediaType(item.media_type);
+                  }}
+                >
+                  {item.media_type === 'video' ? (
+                    <video src={item.file} className="w-full h-28 object-cover" muted />
+                  ) : (
+                    <img src={item.file} alt="" className="w-full h-28 object-cover" />
+                  )}
+                  <div className={`p-2 ${dark ? 'bg-neutral-800' : 'bg-stone-50'}`}>
+                    <p className="text-[10px] leading-tight line-clamp-2 mb-1">{item.prompt || 'No prompt'}</p>
+                    <div className="flex items-center gap-2 text-[9px] opacity-60">
+                      <span>{item.model_used}</span>
+                      {item.duration_seconds && <span>{item.duration_seconds}s</span>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>

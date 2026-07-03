@@ -23,6 +23,7 @@ export default function MyAds() {
     pending_approval: ads.filter((a) => a.status === 'pending_approval').length,
     approved: ads.filter((a) => a.status === 'approved').length,
     rejected: ads.filter((a) => a.status === 'rejected').length,
+    revision_requested: ads.filter((a) => a.status === 'revision_requested').length,
   };
 
   const filtered = filter === 'all' ? ads : ads.filter((a) => a.status === filter);

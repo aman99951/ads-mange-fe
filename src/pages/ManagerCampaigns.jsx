@@ -89,6 +89,7 @@ export default function ManagerCampaigns() {
     pending_approval: allAds.filter(a => a.status === 'pending_approval').length,
     approved: allAds.filter(a => a.status === 'approved').length,
     rejected: allAds.filter(a => a.status === 'rejected').length,
+    revision_requested: allAds.filter(a => a.status === 'revision_requested').length,
     draft: allAds.filter(a => a.status === 'draft').length,
   };
 
@@ -96,6 +97,7 @@ export default function ManagerCampaigns() {
     { key: 'all', label: 'All', count: counts.total },
     { key: 'pending_approval', label: 'Pending', count: counts.pending_approval },
     { key: 'approved', label: 'Approved', count: counts.approved },
+    { key: 'revision_requested', label: 'Revisions', count: counts.revision_requested },
     { key: 'rejected', label: 'Rejected', count: counts.rejected },
   ];
 

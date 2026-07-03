@@ -3,6 +3,7 @@ export const AD_STATUS = {
   PENDING_APPROVAL: 'pending_approval',
   APPROVED: 'approved',
   REJECTED: 'rejected',
+  REVISION_REQUESTED: 'revision_requested',
   EXPIRED: 'expired',
 };
 
@@ -11,10 +12,11 @@ export const AD_STATUS_LABELS = {
   pending_approval: 'Pending Approval',
   approved: 'Approved',
   rejected: 'Rejected',
+  revision_requested: 'Revision Requested',
   expired: 'Expired',
 };
 
-export const AD_STATUS_FILTERS = ['all', 'draft', 'pending_approval', 'approved', 'rejected', 'expired'];
+export const AD_STATUS_FILTERS = ['all', 'draft', 'pending_approval', 'approved', 'rejected', 'revision_requested', 'expired'];
 
 export const WIZARD_STEPS = [
   { num: 1, label: 'Target Area' },

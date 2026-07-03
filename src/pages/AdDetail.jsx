@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { useAd } from '../hooks/useAds';
@@ -33,6 +33,29 @@ export default function AdDetail() {
   const [pushing, setPushing] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
   const [langVideoUrls, setLangVideoUrls] = useState({});
+  const videoRef = useRef(null);
+  const langVideoRefs = useRef({});
+  const [feedbackOpen, setFeedbackOpen] = useState(true);
+  const [sendingRevision, setSendingRevision] = useState(false);
+  const [feedbackInputs, setFeedbackInputs] = useState({});
+  const getAssetKey = (assetId) => assetId ? `lang_${assetId}` : 'main';
+
+  const feedbackList = ad?.video_feedback || [];
+  const completedLangAssets = ad?.language_assets?.filter(a => a.asset && a.status === 'completed') || [];
+
+  const feedbacksForAsset = (assetId) => {
+    const key = getAssetKey(assetId);
+    return feedbackList.filter(fb => {
+      if (key === 'main') return !fb.language_asset;
+      return fb.language_asset === assetId;
+    });
+  };
+
+  const inputState = (assetId) => feedbackInputs[getAssetKey(assetId)] || { comment: '', timestamp: null, loading: false };
+  const setInput = (assetId, patch) => setFeedbackInputs(prev => ({
+    ...prev,
+    [getAssetKey(assetId)]: { ...inputState(assetId), ...patch }
+  }));
 
   useEffect(() => {
     if (ad?.final_asset) {
@@ -114,6 +137,157 @@ export default function AdDetail() {
     } catch (err) {
       setError(err.message);
     }
+  };
+
+  const handleCaptureTimestamp = (assetId) => {
+    const ref = assetId ? langVideoRefs.current[assetId] : videoRef.current;
+    if (ref) {
+      setInput(assetId, { timestamp: Math.floor(ref.currentTime) });
+    }
+  };
+
+  const handleAddFeedback = async (assetId) => {
+    const state = inputState(assetId);
+    if (!state.comment.trim()) return;
+    setInput(assetId, { loading: true });
+    try {
+      const data = { comment: state.comment.trim() };
+      if (state.timestamp !== null) data.timestamp_seconds = state.timestamp;
+      if (assetId) data.language_asset_id = assetId;
+      await ads.addVideoFeedback(id, data);
+      setInput(assetId, { comment: '', timestamp: null, loading: false });
+      await refetch();
+    } catch (err) {
+      setInput(assetId, { loading: false });
+      setError(err.message);
+    }
+  };
+
+  const handleDeleteFeedback = async (feedbackId) => {
+    try {
+      await ads.deleteVideoFeedback(id, feedbackId);
+      await refetch();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleRequestRevision = async () => {
+    const combinedFeedback = feedbackList
+      .map(f => {
+        const label = f.language_name ? `[${f.language_name}] ` : '';
+        const ts = f.timestamp_seconds != null ? formatTimestamp(f.timestamp_seconds) + ' - ' : '';
+        return label + ts + f.comment;
+      })
+      .join('\n');
+    if (!combinedFeedback.trim()) return;
+    setSendingRevision(true);
+    try {
+      await ads.requestRevision(id, { feedback: combinedFeedback });
+      await refetch();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSendingRevision(false);
+    }
+  };
+
+  const formatTimestamp = (seconds) => {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const renderFeedbackBlock = (videoSrc, assetId, label) => {
+    const key = getAssetKey(assetId);
+    const fbItems = feedbacksForAsset(assetId);
+    const state = inputState(assetId);
+    const setRef = (el) => {
+      if (assetId) langVideoRefs.current[assetId] = el;
+    };
+
+    return (
+      <div key={key} className={`mb-5 p-4 rounded-xl border transition-all duration-300 ${
+        dark ? 'bg-neutral-800/30 border-neutral-700/40' : 'bg-stone-50/80 border-stone-200'
+      }`}>
+        {label && (
+          <h4 className={`text-xs font-bold mb-3 ${c(dark ? 'dark' : 'light').text}`}>{label}</h4>
+        )}
+        {/* Video player */}
+        {videoSrc && (
+          <div className="rounded-lg overflow-hidden border border-amber-500/10 max-w-xl mb-3">
+            <video ref={assetId ? setRef : videoRef} src={videoSrc} controls className="w-full max-h-48 object-contain bg-black/10">
+              Your browser does not support the video tag.
+            </video>
+          </div>
+        )}
+        {/* Comments for this asset */}
+        {fbItems.length > 0 && (
+          <div className="space-y-1.5 mb-3 max-h-48 overflow-y-auto">
+            {fbItems.map(fb => (
+              <div key={fb.id} className={`flex items-start gap-2 px-3 py-2 rounded-lg text-xs border ${
+                dark ? 'bg-neutral-800/40 border-neutral-700/50' : 'bg-white border-stone-200'
+              }`}>
+                <div className={`w-1 h-full min-h-[1.5rem] rounded-full flex-shrink-0 bg-amber-500`} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    {fb.timestamp_seconds != null && (
+                      <span className={`px-1 py-0.5 rounded text-[9px] font-mono font-bold ${
+                        dark ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-100 text-amber-700'
+                      }`}>
+                        {formatTimestamp(fb.timestamp_seconds)}
+                      </span>
+                    )}
+                    <span className={`text-[9px] ${c(dark ? 'dark' : 'light').textMuted}`}>{fb.user_name || 'Client'}</span>
+                  </div>
+                  <p className={`${c(dark ? 'dark' : 'light').text}`}>{fb.comment}</p>
+                </div>
+                <button onClick={() => handleDeleteFeedback(fb.id)}
+                  className={`p-0.5 rounded hover:bg-red-500/10 transition-colors ${
+                    dark ? 'text-neutral-600 hover:text-red-400' : 'text-stone-400 hover:text-red-500'
+                  }`}>
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Add feedback form */}
+        <div className="flex items-start gap-1.5">
+          <input
+            value={state.comment}
+            onChange={(e) => setInput(assetId, { comment: e.target.value })}
+            placeholder="Add feedback..."
+            className={`flex-1 text-xs px-3 py-2 rounded-lg border outline-none transition-all duration-300 ${
+              dark
+                ? 'bg-neutral-800 border-neutral-700 text-neutral-200 placeholder-neutral-500 focus:border-amber-500/30'
+                : 'bg-white border-stone-200 text-stone-800 placeholder-stone-400 focus:border-amber-400'
+            }`}
+          />
+          <button onClick={() => handleCaptureTimestamp(assetId)}
+            className={`p-2 rounded-lg text-xs font-medium transition-all duration-300 ${
+              dark ? 'bg-neutral-800 border border-neutral-700 text-neutral-400 hover:text-amber-300' : 'bg-white border border-stone-200 text-stone-500 hover:text-amber-600'
+            }`}
+            title="Capture current video timestamp">
+            {state.timestamp != null ? formatTimestamp(state.timestamp) :
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            }
+          </button>
+          <Button size="sm" onClick={() => handleAddFeedback(assetId)} loading={state.loading}
+            disabled={!state.comment.trim()}>Add</Button>
+          {state.timestamp != null && (
+            <button onClick={() => setInput(assetId, { timestamp: null })}
+              className={`p-2 rounded-lg text-[9px] ${dark ? 'text-neutral-500 hover:text-neutral-300' : 'text-stone-400 hover:text-stone-600'}`}>
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+    );
   };
 
   if (loading) {
@@ -348,6 +522,61 @@ export default function AdDetail() {
           </div>
         )}
 
+        {/* Feedback & Send Back Section */}
+        {(
+          <div className="animate-fade-in-up animate-delay-300 mb-8">
+            <SectionCard title={
+              <div className="flex items-center justify-between w-full">
+                <span>Feedback & Send Back to Manager</span>
+                <button onClick={() => setFeedbackOpen(o => !o)}
+                  className={`p-1.5 rounded-lg transition-all duration-300 hover:bg-amber-500/10 ${
+                    dark ? 'text-neutral-500 hover:text-amber-400' : 'text-stone-400 hover:text-amber-600'
+                  }`}>
+                  <svg className={`w-4 h-4 transition-transform duration-300 ${feedbackOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+                  </svg>
+                </button>
+              </div>
+            }>
+              {feedbackOpen && (
+              <>
+              <p className={`text-xs mb-4 ${c(dark ? 'dark' : 'light').textMuted}`}>
+                {videoUrl || completedLangAssets.length > 0
+                  ? 'Add timestamped feedback on any video below, then send back for revisions.'
+                  : 'Add your feedback below, then send back to the manager for revisions.'}
+              </p>
+
+              {/* Main video feedback block */}
+              {videoUrl && renderFeedbackBlock(videoUrl, null, 'Main Video')}
+
+              {/* Language asset video feedback blocks */}
+              {completedLangAssets.map(asset => (
+                <div key={asset.id}>
+                  {renderFeedbackBlock(langVideoUrls[asset.language], asset.id, `Video — ${asset.language_name || asset.language}`)}
+                </div>
+              ))}
+
+              {/* Send Back button — always visible */}
+              <div className={`mt-4 pt-4 border-t border-dashed ${dark ? 'border-amber-500/20' : 'border-stone-200'}`}>
+                <Button onClick={handleRequestRevision} loading={sendingRevision} className="w-full !py-3"
+                  disabled={feedbackList.length === 0}
+                  title={feedbackList.length === 0 ? 'Add at least one feedback comment first' : ''}>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
+                  </svg>
+                  Send Back for Revisions
+                </Button>
+                <p className={`text-[10px] mt-1.5 text-center ${c(dark ? 'dark' : 'light').textMuted}`}>
+                  {feedbackList.length > 0
+                    ? `This will bundle all ${feedbackList.length} feedback${feedbackList.length > 1 ? 's' : ''} across all videos and notify the manager`
+                    : 'Add feedback on any video above, then click here to send back to the manager'}
+                </p>
+              </div>
+              </>)}
+            </SectionCard>
+          </div>
+        )}
+
         {/* Push to Developer App - Client side */}
         {ad.status === 'approved' && devApps.length > 0 && (
           <div className="mb-8 animate-fade-in-up animate-delay-350">
@@ -471,7 +700,8 @@ export default function AdDetail() {
           </div>
         )}
 
-        {/* Action Bar */}
+        {/* Action Bar — only show when at least one status condition matches */}
+        {(ad.status === 'draft' || ad.status === 'rejected' || ad.status === 'pending_approval' || (ad.status === 'approved' && !ad.final_asset) || ad.status === 'revision_requested') && (
         <div className={`rounded-2xl p-5 sm:p-6 flex flex-wrap items-center gap-3 transition-all duration-500 animate-fade-in-up animate-delay-400 ${
           dark ? 'bg-gradient-to-br from-neutral-900/80 to-neutral-900/40 border border-amber-500/10' : 'bg-white border border-stone-200 shadow-sm'
         }`}>
@@ -517,7 +747,23 @@ export default function AdDetail() {
               </div>
             </div>
           )}
+          {ad.status === 'revision_requested' && (
+            <div className={`flex items-start gap-3 text-sm ${dark ? 'text-purple-400' : 'text-purple-700'}`}>
+              <div className={`p-2 rounded-full ${dark ? 'bg-purple-500/10' : 'bg-purple-100'}`}>
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
+                </svg>
+              </div>
+              <div>
+                <p className="font-semibold">Revision Requested</p>
+                <p className={`text-xs mt-0.5 ${dark ? 'text-purple-300/70' : 'text-purple-600'}`}>
+                  The manager has been notified. You can add more feedback below.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
+        )}
 
         {/* Revision Modal */}
         <Modal open={iterationModal} onClose={() => setIterationModal(false)} title="Add Revision">

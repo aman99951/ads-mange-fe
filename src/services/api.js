@@ -101,6 +101,7 @@ export const ads = {
   generateVideoClip: (data) => request('/ads/generate_video_clip/', { method: 'POST', body: JSON.stringify(data) }),
   getModels: () => request('/models/'),
   getUsageStats: () => request('/usage-stats/'),
+  getRecentMedia: () => request('/recent-media/'),
   enhancePrompt: (data) => request('/enhance-prompt/', { method: 'POST', body: JSON.stringify(data) }),
   uploadAsset: (id, data) => {
     const form = new FormData();
@@ -109,6 +110,17 @@ export const ads = {
     });
     return request(`/ads/${id}/upload_asset/`, { method: 'POST', body: form });
   },
+  requestRevision: (id, data) => request(`/ads/${id}/request_revision/`, { method: 'POST', body: JSON.stringify(data) }),
+  sendBackToClient: (id, data) => request(`/ads/${id}/send_back_to_client/`, { method: 'POST', body: JSON.stringify(data) }),
+  getVideoFeedback: (adId) => request(`/ads/${adId}/video-feedback/`),
+  addVideoFeedback: (adId, data) => {
+    const body = { comment: data.comment };
+    if (data.timestamp_seconds != null) body.timestamp_seconds = data.timestamp_seconds;
+    if (data.language_asset_id) body.language_asset_id = data.language_asset_id;
+    return request(`/ads/${adId}/video-feedback/`, { method: 'POST', body: JSON.stringify(body) });
+  },
+  deleteVideoFeedback: (adId, feedbackId) => request(`/ads/${adId}/video-feedback/${feedbackId}/`, { method: 'DELETE' }),
+  saveGeneratedAssets: (adId, data) => request(`/ads/${adId}/save_generated_assets/`, { method: 'POST', body: JSON.stringify(data) }),
   createCreative: (data) => {
     const hasFile = data.image_file instanceof File || data.video_file instanceof File;
     if (hasFile) {

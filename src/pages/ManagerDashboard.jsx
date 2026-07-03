@@ -64,6 +64,7 @@ export default function ManagerDashboard() {
     total: allAds.length,
     pending_approval: allAds.filter(a => a.status === 'pending_approval').length,
     approved: allAds.filter(a => a.status === 'approved').length,
+    revision_requested: allAds.filter(a => a.status === 'revision_requested').length,
   };
 
   return (
