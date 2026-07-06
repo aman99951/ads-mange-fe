@@ -151,3 +151,12 @@ export const developerApps = {
   update: (id, data) => request(`/developer/apps/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id) => request(`/developer/apps/${id}/`, { method: 'DELETE' }),
 };
+
+export const creativeSessions = {
+  list: () => request('/creative-sessions/'),
+  create: (data) => request('/creative-sessions/', { method: 'POST', body: JSON.stringify(data) }),
+  get: (id) => request(`/creative-sessions/${id}/`),
+  update: (id, data) => request(`/creative-sessions/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  delete: (id) => request(`/creative-sessions/${id}/`, { method: 'DELETE' }),
+  addEvent: (id, data) => request(`/creative-sessions/${id}/add-event/`, { method: 'POST', body: JSON.stringify(data) }),
+};

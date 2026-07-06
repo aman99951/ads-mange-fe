@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { colors } from '../config/theme';
-import { ads, managerSettings } from '../services/api';
+import { ads, managerSettings, creativeSessions } from '../services/api';
 import AppLayout from '../components/layout/AppLayout';
 import ErrorAlert from '../components/layout/ErrorAlert';
 import Button from '../components/ui/Button';
@@ -318,76 +318,71 @@ async function mergeVideosClientSide(clips, outputW, outputH, fps = 30, onProgre
 
 /* ───────── Sub-components ───────── */
 
-function Sidebar({ dark, mode, activeMediaType, onModeChange, onMediaTypeChange, onNewTemplate, generatedAssets = [] }) {
+function Sidebar({ dark, mode, sessions, currentSessionId, onModeChange, onSelectSession, onNewSession, onDeleteSession }) {
   return (
     <div className={`w-[220px] flex-shrink-0 flex flex-col h-full ${
       dark ? 'bg-neutral-900/90 border-r border-neutral-800' : 'bg-white/90 border-r border-stone-200'
     }`}>
       {/* Sidebar Header */}
-      <div className={`px-4 py-3 border-b ${dark ? 'border-neutral-800' : 'border-stone-200'}`}>
-        <h2 className={`text-xs font-bold tracking-tight ${dark ? 'text-neutral-200' : 'text-neutral-800'}`}>Creative Studio</h2>
+      <div className={`px-4 py-3 border-b flex items-center justify-between ${dark ? 'border-neutral-800' : 'border-stone-200'}`}>
+        <h2 className={`text-xs font-bold tracking-tight ${dark ? 'text-neutral-200' : 'text-neutral-800'}`}>Sessions</h2>
+        <button
+          onClick={onNewSession}
+          className={`text-[9px] font-medium px-2 py-1 rounded-lg transition-colors ${
+            dark ? 'bg-neutral-800 text-neutral-400 hover:text-neutral-200' : 'bg-stone-100 text-stone-500 hover:text-stone-800'
+          }`}
+          title="New session"
+        >
+          + New
+        </button>
       </div>
 
       {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
-        {/* Tools */}
-        <div>
-          <h3 className={`text-[9px] font-semibold uppercase tracking-wider mb-2 ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
-            Tools
-          </h3>
-          <div className="space-y-1">
-            {APP_MODES.map((md) => (
-              <button
-                key={md.key}
-                onClick={() => onModeChange(md.key)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                  mode === md.key
-                    ? dark
-                      ? 'bg-amber-500/12 text-amber-300'
-                      : 'bg-amber-50 text-amber-700'
-                    : dark
-                      ? 'text-neutral-400 hover:bg-neutral-800'
-                      : 'text-stone-500 hover:bg-stone-100'
-                }`}
-              >
-                <span className="text-sm">{md.icon}</span>
-                <span>{md.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Recent */}
-        {generatedAssets.length > 0 && (
-          <div>
-            <h3 className={`text-[9px] font-semibold uppercase tracking-wider mb-2 ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
-              Recent
-            </h3>
-            <div className="space-y-1">
-              {[...generatedAssets].reverse().slice(0, 5).map((item) => (
-                <button
-                  key={item.id}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all ${
-                    dark
-                      ? 'text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300'
-                      : 'text-stone-400 hover:bg-stone-100 hover:text-stone-600'
-                  }`}
-                >
-                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs ${
-                    dark ? 'bg-neutral-800' : 'bg-stone-100'
-                  }`}>
-                    {item.type === 'video' ? '🎬' : '🖼️'}
-                  </div>
-                  <div className="flex-1 text-left min-w-0">
-                    <div className={`font-medium truncate ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>
-                      {item.prompt || 'Untitled'}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
+      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
+        {sessions.length === 0 && (
+          <p className={`text-[10px] text-center py-4 ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
+            No sessions yet
+          </p>
         )}
+        {sessions.map((session) => (
+          <div key={session.id} className="group relative">
+            <button
+              onClick={() => onSelectSession(session.id)}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all text-left ${
+                currentSessionId === session.id
+                  ? dark
+                    ? 'bg-amber-500/12 text-amber-300'
+                    : 'bg-amber-50 text-amber-700'
+                  : dark
+                    ? 'text-neutral-400 hover:bg-neutral-800'
+                    : 'text-stone-500 hover:bg-stone-100'
+              }`}
+            >
+              <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs flex-shrink-0 ${
+                dark ? 'bg-neutral-800' : 'bg-stone-100'
+              }`}>
+                {session.media_type === 'video' ? '🎬' : '🖼️'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium truncate">
+                  {session.title || 'Untitled'}
+                </div>
+                <div className={`text-[9px] ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
+                  {session.asset_count || 0} assets
+                </div>
+              </div>
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDeleteSession(session.id); }}
+              className={`absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[9px] ${
+                dark ? 'text-neutral-600 hover:text-red-400 hover:bg-neutral-800' : 'text-stone-400 hover:text-red-500 hover:bg-stone-100'
+              }`}
+              title="Delete session"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -793,17 +788,20 @@ function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError 
 }
 
 const IMAGE_MODELS_DEFAULT = [
+  { id: 'gemini-3.1-flash-lite-image', name: 'Gemini 3.1 Flash Lite', credit_cost: 1, description: 'Fastest, cheapest — 1 credit', provider: 'google', api_type: 'generateContent' },
   { id: 'gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image', credit_cost: 2, description: 'Fast image generation — 2 credits', provider: 'google', api_type: 'generateContent' },
   { id: 'gemini-3.1-flash-image', name: 'Gemini 3.1 Flash Image', credit_cost: 3, description: 'High-efficiency — 3 credits', provider: 'google', api_type: 'generateContent' },
-  { id: 'gemini-3.1-flash-lite-image', name: 'Gemini 3.1 Flash Lite', credit_cost: 1, description: 'Fastest, cheapest — 1 credit', provider: 'google', api_type: 'generateContent' },
   { id: 'gemini-3-pro-image', name: 'Gemini 3 Pro Image', credit_cost: 5, description: 'Professional quality — 5 credits', provider: 'google', is_premium: true, api_type: 'generateContent' },
 ];
 
 const VIDEO_MODELS_DEFAULT = [
-  { id: 'veo-3.1-generate-preview', name: 'Veo 3.1', credit_cost: 8, description: 'Latest cinematic video generation' },
-  { id: 'veo-3.1-fast-generate-preview', name: 'Veo 3.1 Fast', credit_cost: 6, description: 'Faster generation, good quality' },
   { id: 'veo-3.1-lite-generate-preview', name: 'Veo 3.1 Lite', credit_cost: 4, description: 'Fastest, lightweight option' },
+  { id: 'veo-3.1-fast-generate-preview', name: 'Veo 3.1 Fast', credit_cost: 6, description: 'Faster generation, good quality' },
+  { id: 'veo-3.1-generate-preview', name: 'Veo 3.1', credit_cost: 8, description: 'Latest cinematic video generation' },
 ];
+
+// Models that cannot extend beyond a single clip (must match backend EXTENSION_BLACKLIST)
+const VIDEO_NO_EXTENSION = new Set(['veo-3.1-lite-generate-preview']);
 
 export default function ManagerCreateCreative() {
   const { dark } = useTheme();
@@ -859,22 +857,155 @@ export default function ManagerCreateCreative() {
   const [notification, setNotification] = useState(null);
   const [recentMedia, setRecentMedia] = useState([]);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [sessions, setSessions] = useState([]);
+  const [currentSessionId, setCurrentSessionId] = useState(null);
+  const [savingSession, setSavingSession] = useState(false);
+  const saveTimerRef = useRef(null);
+  const loadingSessionRef = useRef(false);
 
   // Fetch models and Google API usage stats on mount
   useEffect(() => {
     fetchModels();
     fetchUsageStats();
     fetchMyApiKey();
+    fetchSessions();
     fetchRecentMedia();
   }, []);
 
-  const fetchUsageStats = async () => {
+  // Auto-save session when prompt or settings change (debounced)
+  useEffect(() => {
+    if (!currentSessionId || loadingSessionRef.current) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveCurrentSession();
+    }, 2000);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [prompt, width, height, duration, style, mediaType, selectedImageModel, selectedVideoModel, currentSessionId]);
+
+  const saveCurrentSession = async () => {
+    if (!currentSessionId) return;
+    setSavingSession(true);
     try {
-      const data = await ads.getUsageStats();
-      if (data) setGoogleApiQuota(data);
+      await creativeSessions.update(currentSessionId, {
+        title: prompt ? prompt.slice(0, 80) : undefined,
+        media_type: mediaType,
+        current_prompt: prompt,
+        settings: { width, height, duration, style, mediaType, model: selectedModel },
+      });
     } catch (err) {
-      // Ignore if API unavailable
+      // Ignore
+    } finally {
+      setSavingSession(false);
     }
+  };
+
+  const fetchSessions = async () => {
+    try {
+      const data = await creativeSessions.list();
+      setSessions(data || []);
+      // Auto-create a new session if none exists
+      if (!data || data.length === 0) {
+        const newSession = await creativeSessions.create({
+          title: prompt ? prompt.slice(0, 80) : 'New Session',
+          media_type: mediaType,
+          current_prompt: prompt,
+          settings: { width, height, duration, style, mediaType, model: selectedModel },
+        });
+        setSessions([newSession]);
+        setCurrentSessionId(newSession.id);
+      } else {
+        // Load the most recent session (loadSession sets currentSessionId)
+        await loadSession(data[0].id);
+      }
+    } catch (err) {
+      // Ignore
+    }
+  };
+
+  const loadSession = async (sessionId) => {
+    loadingSessionRef.current = true;
+    try {
+      const session = await creativeSessions.get(sessionId);
+      setCurrentSessionId(session.id);
+      if (session.settings) {
+        const s = session.settings;
+        if (s.width) setWidth(s.width);
+        if (s.height) setHeight(s.height);
+        if (s.duration) setDuration(s.duration);
+        if (s.style) setStyle(s.style);
+        if (s.mediaType) setMediaType(s.mediaType);
+        if (s.model) {
+          if (session.media_type === 'image') setSelectedImageModel(s.model);
+          else setSelectedVideoModel(s.model);
+        }
+      }
+      if (session.current_prompt) setPrompt(session.current_prompt);
+      // Load generated assets from session events
+      if (session.events?.length) {
+        const assets = session.events
+          .filter(e => e.event_type === 'generate' && e.file)
+          .map(e => ({
+            id: e.id,
+            mediaId: e.id,
+            type: session.media_type,
+            url: e.file,
+            prompt: e.prompt || '',
+            model: e.model_used || '',
+            duration: e.duration_seconds,
+          }));
+        setGeneratedAssets(assets);
+        if (assets.length > 0) setSelectedAsset(assets[assets.length - 1]);
+      }
+    } catch (err) {
+      // Ignore
+    } finally {
+      loadingSessionRef.current = false;
+    }
+  };
+
+  const handleNewSession = async () => {
+    try {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      await saveCurrentSession();
+      const newSession = await creativeSessions.create({
+        title: 'New Session',
+        media_type: mediaType,
+        current_prompt: '',
+        settings: { width, height, duration, style, mediaType, model: selectedModel },
+      });
+      setSessions(prev => [newSession, ...prev]);
+      setCurrentSessionId(newSession.id);
+      setPrompt('');
+      setGeneratedAssets([]);
+      setSelectedAsset(null);
+    } catch (err) {
+      // Ignore
+    }
+  };
+
+  const handleDeleteSession = async (sessionId) => {
+    try {
+      await creativeSessions.delete(sessionId);
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
+      if (currentSessionId === sessionId) {
+        const remaining = sessions.filter(s => s.id !== sessionId);
+        if (remaining.length > 0) {
+          await loadSession(remaining[0].id);
+        } else {
+          handleNewSession();
+        }
+      }
+    } catch (err) {
+      // Ignore
+    }
+  };
+
+  const handleSelectSession = async (sessionId) => {
+    if (sessionId === currentSessionId) return;
+    // Save current session before switching
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    await saveCurrentSession();
+    await loadSession(sessionId);
   };
 
   const fetchRecentMedia = async () => {
@@ -883,6 +1014,15 @@ export default function ManagerCreateCreative() {
       if (data) setRecentMedia(data);
     } catch (err) {
       // Ignore
+    }
+  };
+
+  const fetchUsageStats = async () => {
+    try {
+      const data = await ads.getUsageStats();
+      if (data) setGoogleApiQuota(data);
+    } catch (err) {
+      // Ignore if API unavailable
     }
   };
 
@@ -923,6 +1063,16 @@ export default function ManagerCreateCreative() {
     if (mediaType === 'image') setSelectedImageModel(id);
     else setSelectedVideoModel(id);
   };
+
+  // Max duration depends on model: no-extension models cap at 8s
+  const videoMaxDuration = VIDEO_NO_EXTENSION.has(selectedVideoModel) ? 8 : 60;
+
+  // Clamp duration when model changes
+  useEffect(() => {
+    if (mediaType === 'video' && duration > videoMaxDuration) {
+      setDuration(videoMaxDuration);
+    }
+  }, [selectedVideoModel, mediaType]);
 
   const handleLanguageSelect = (lang) => {
     // If same language clicked, deselect
@@ -965,6 +1115,21 @@ export default function ManagerCreateCreative() {
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
+    // Ensure we have a session
+    let sessionId = currentSessionId;
+    if (!sessionId) {
+      try {
+        const newSession = await creativeSessions.create({
+          title: prompt.trim().slice(0, 80),
+          media_type: mediaType,
+          current_prompt: prompt,
+          settings: { width, height, duration, style, mediaType, model: selectedModel },
+        });
+        setSessions(prev => [newSession, ...prev]);
+        setCurrentSessionId(newSession.id);
+        sessionId = newSession.id;
+      } catch (err) { /* ignore */ }
+    }
     setGenerating(true);
     setError('');
     try {
@@ -975,14 +1140,22 @@ export default function ManagerCreateCreative() {
           aspect_ratio: aspectRatio,
           model: selectedImageModel,
         });
-        setGeneratedAssets(prev => [...prev, {
+        const newAsset = {
           type: 'image', url: result.url, prompt: prompt.trim(),
           width, height, style, model: result.model_used,
           id: Date.now(), mediaId: result.generated_media_id,
-        }]);
-        // Refresh Google API quota after generation
+        };
+        setGeneratedAssets(prev => [...prev, newAsset]);
+        setSelectedAsset(newAsset);
         fetchUsageStats();
-        fetchRecentMedia();
+        if (sessionId && result.generated_media_id) {
+          creativeSessions.addEvent(sessionId, {
+            event_type: 'generate',
+            prompt: prompt.trim(),
+            settings: { width, height, style, mediaType, model: selectedImageModel },
+            generated_media_id: result.generated_media_id,
+          }).catch(() => {});
+        }
       } else {
         const perClipDuration = duration > 8 ? 8 : [4, 6, 8].reduce((a, b) => Math.abs(b - duration) < Math.abs(a - duration) ? b : a);
         const result = await ads.generateVideoClip({
@@ -992,15 +1165,26 @@ export default function ManagerCreateCreative() {
           target_duration_seconds: duration,
           model: selectedVideoModel,
         });
-        setGeneratedAssets(prev => [...prev, {
+        const newAsset = {
           type: 'video', url: result.url, prompt: prompt.trim(),
           width, height, duration, model: result.model_used,
           id: Date.now(), mediaId: result.generated_media_id,
-        }]);
-        // Refresh Google API quota after generation
+        };
+        setGeneratedAssets(prev => [...prev, newAsset]);
+        setSelectedAsset(newAsset);
         fetchUsageStats();
-        fetchRecentMedia();
+        if (sessionId && result.generated_media_id) {
+          creativeSessions.addEvent(sessionId, {
+            event_type: 'generate',
+            prompt: prompt.trim(),
+            settings: { width, height, duration, mediaType, model: selectedVideoModel },
+            generated_media_id: result.generated_media_id,
+          }).catch(() => {});
+        }
       }
+      // Refresh sessions list to update asset counts
+      const updated = await creativeSessions.list().catch(() => null);
+      if (updated) setSessions(updated);
     } catch (err) {
       if (err.data?.google_api_quota) setGoogleApiQuota(err.data.google_api_quota);
       else fetchUsageStats();
@@ -1063,11 +1247,12 @@ export default function ManagerCreateCreative() {
         <Sidebar
           dark={dark}
           mode={mode}
-          activeMediaType={mediaType}
+          sessions={sessions}
+          currentSessionId={currentSessionId}
           onModeChange={setMode}
-          onMediaTypeChange={setMediaType}
-          onNewTemplate={handleNewTemplate}
-          generatedAssets={generatedAssets}
+          onSelectSession={handleSelectSession}
+          onNewSession={handleNewSession}
+          onDeleteSession={handleDeleteSession}
         />
 
         {/* Recent Media toggle */}
@@ -1163,6 +1348,17 @@ export default function ManagerCreateCreative() {
               /* ─── Video Merger Mode ─── */
               <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 animate-fade-in-up animate-delay-100">
                 <div className="lg:col-span-5">
+                  <button
+                    onClick={() => setMode('generate')}
+                    className={`flex items-center gap-1.5 mb-4 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      dark ? 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800' : 'text-stone-500 hover:text-stone-700 hover:bg-stone-100'
+                    }`}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                    </svg>
+                    Back to Generate
+                  </button>
                   <ErrorAlert message={error} onDismiss={() => setError('')} />
                   <VideoMergerPanel
                     dark={dark}
@@ -1587,14 +1783,14 @@ export default function ManagerCreateCreative() {
                         <input
                           type="number"
                           min={4}
-                          max={60}
+                          max={videoMaxDuration}
                           value={duration}
-                          onChange={(e) => setDuration(Math.max(4, Math.min(60, parseInt(e.target.value) || 4)))}
+                          onChange={(e) => setDuration(Math.max(4, Math.min(videoMaxDuration, parseInt(e.target.value) || 4)))}
                           className={`w-12 px-1.5 py-1.5 rounded-lg text-xs text-center outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
                             dark ? 'bg-neutral-800 border border-neutral-700 text-neutral-200' : 'bg-stone-50 border border-stone-300 text-neutral-900'
                           }`}
                         />
-                        <span className={`text-[10px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>sec (max 60)</span>
+                        <span className={`text-[10px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>sec (max {videoMaxDuration})</span>
                       </div>
                     ) : (
                       <div className="flex items-center gap-1 flex-wrap">
@@ -1800,7 +1996,10 @@ export default function ManagerCreateCreative() {
                       </div>
                       {selectedAsset && (
                         <div className={`flex items-center justify-between px-4 py-2 border-t ${dark ? 'border-neutral-800' : 'border-stone-200'}`}>
-                          <span className={`text-[10px] truncate max-w-[150px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>{selectedAsset.prompt?.slice(0, 40)}</span>
+                          <span className={`text-[9px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
+                            {selectedAsset.model || ''}
+                            {selectedAsset.duration ? ` · ${selectedAsset.duration}s` : ''}
+                          </span>
                           <button onClick={() => setSelectedAsset(null)} className="text-[9px] font-medium text-red-400 hover:text-red-500">Clear</button>
                         </div>
                       )}
