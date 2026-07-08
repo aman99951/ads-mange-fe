@@ -112,6 +112,7 @@ export const ads = {
   },
   requestRevision: (id, data) => request(`/ads/${id}/request_revision/`, { method: 'POST', body: JSON.stringify(data) }),
   sendBackToClient: (id, data) => request(`/ads/${id}/send_back_to_client/`, { method: 'POST', body: JSON.stringify(data) }),
+  getRevisionRequests: () => request('/ads/revision_requests/'),
   getVideoFeedback: (adId) => request(`/ads/${adId}/video-feedback/`),
   addVideoFeedback: (adId, data) => {
     const body = { comment: data.comment };
@@ -159,4 +160,9 @@ export const creativeSessions = {
   update: (id, data) => request(`/creative-sessions/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (id) => request(`/creative-sessions/${id}/`, { method: 'DELETE' }),
   addEvent: (id, data) => request(`/creative-sessions/${id}/add-event/`, { method: 'POST', body: JSON.stringify(data) }),
+  uploadMedia: (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request('/upload-media/', { method: 'POST', body: form });
+  },
 };

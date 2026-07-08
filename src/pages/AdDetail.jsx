@@ -37,6 +37,7 @@ export default function AdDetail() {
   const langVideoRefs = useRef({});
   const [feedbackOpen, setFeedbackOpen] = useState(true);
   const [sendingRevision, setSendingRevision] = useState(false);
+  const [previewVideo, setPreviewVideo] = useState(null);
   const [feedbackInputs, setFeedbackInputs] = useState({});
   const getAssetKey = (assetId) => assetId ? `lang_${assetId}` : 'main';
 
@@ -215,10 +216,20 @@ export default function AdDetail() {
         )}
         {/* Video player */}
         {videoSrc && (
-          <div className="rounded-lg overflow-hidden border border-amber-500/10 max-w-xl mb-3">
-            <video ref={assetId ? setRef : videoRef} src={videoSrc} controls className="w-full max-h-48 object-contain bg-black/10">
+          <div
+            onClick={() => setPreviewVideo(videoSrc)}
+            className="rounded-lg overflow-hidden border border-amber-500/10 max-w-[200px] mb-3 cursor-pointer group relative"
+          >
+            <video ref={assetId ? setRef : videoRef} src={videoSrc} muted preload="metadata" className="w-full object-cover bg-black/10 aspect-video">
               Your browser does not support the video tag.
             </video>
+            <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-all duration-300">
+              <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 shadow-lg">
+                <svg className="w-3.5 h-3.5 text-stone-700 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </div>
+            </div>
           </div>
         )}
         {/* Comments for this asset */}
@@ -471,14 +482,32 @@ export default function AdDetail() {
           <div className="animate-fade-in-up animate-delay-300">
             <SectionCard title="Your Ad Video" className="mb-8">
               {isImageFile(videoUrl) ? (
-                <div className="rounded-xl overflow-hidden border border-amber-500/10">
-                  <img src={videoUrl} alt="Ad asset" className="max-h-80 w-full object-contain bg-black/10" />
+                <div
+                  onClick={() => setPreviewVideo(videoUrl)}
+                  className="rounded-xl overflow-hidden border border-amber-500/10 cursor-pointer group relative max-w-xs"
+                >
+                  <img src={videoUrl} alt="Ad asset" className="w-full object-contain bg-black/10 max-h-48" />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-all duration-300">
+                    <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 shadow-lg">
+                      <svg className="w-5 h-5 text-stone-700 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
               ) : (
-                <div className="rounded-xl overflow-hidden border border-amber-500/10 max-w-2xl">
-                  <video src={videoUrl} controls className="w-full max-h-96 object-contain bg-black/10">
-                    Your browser does not support the video tag.
-                  </video>
+                <div
+                  onClick={() => setPreviewVideo(videoUrl)}
+                  className="rounded-xl overflow-hidden border border-amber-500/10 cursor-pointer group relative max-w-xs"
+                >
+                  <video src={videoUrl} className="w-full object-contain bg-black/10 max-h-48" muted preload="metadata" />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-all duration-300">
+                    <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 shadow-lg">
+                      <svg className="w-5 h-5 text-stone-700 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
               )}
             </SectionCard>
@@ -489,23 +518,38 @@ export default function AdDetail() {
         {ad.language_assets?.length > 0 && ad.language_assets.some(a => a.status === 'completed') && (
           <div className="animate-fade-in-up animate-delay-300">
             <SectionCard title="Generated Videos" className="mb-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                 {ad.language_assets.filter(a => a.status === 'completed' && a.asset).map((asset) => (
-                  <div key={asset.id} className={`rounded-xl p-4 border transition-all duration-300 ${
-                    dark ? 'bg-neutral-800/40 border-neutral-700/50' : 'bg-stone-50 border-stone-200'
-                  }`}>
-                    <h4 className={`text-sm font-bold mb-3 ${c(dark ? 'dark' : 'light').text}`}>{asset.language_name}</h4>
-                    <div className="rounded-lg overflow-hidden border border-amber-500/10 mb-3">
-                      <video src={langVideoUrls[asset.language]} controls className="w-full max-h-48 object-contain bg-black/10">
-                        Your browser does not support the video tag.
-                      </video>
+                  <div key={asset.id} className={`rounded-xl overflow-hidden border transition-all duration-300 group cursor-pointer ${
+                    dark ? 'bg-neutral-800/40 border-neutral-700/50 hover:border-amber-500/30' : 'bg-stone-50 border-stone-200 hover:border-amber-300'
+                  }`}
+                    onClick={() => {
+                      const url = langVideoUrls[asset.language];
+                      if (url) setPreviewVideo(url);
+                    }}
+                  >
+                    <div className="relative">
+                      <video src={langVideoUrls[asset.language]} className="w-full aspect-video object-cover bg-black/10" muted preload="metadata" />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-all duration-300">
+                        <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 shadow-lg">
+                          <svg className="w-4 h-4 text-stone-700 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
+                        </div>
+                      </div>
                     </div>
-                    <Button size="sm" onClick={() => handleDownload(asset.id)}>
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                      </svg>
-                      Download
-                    </Button>
+                    <div className="p-2.5 flex items-center justify-between">
+                      <span className={`text-xs font-medium ${c(dark ? 'dark' : 'light').text}`}>{asset.language_name}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDownload(asset.id); }}
+                        className={`p-1 rounded transition-colors ${dark ? 'text-neutral-500 hover:text-amber-300' : 'text-stone-400 hover:text-amber-600'}`}
+                        title="Download"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -783,6 +827,32 @@ export default function AdDetail() {
             </div>
           </div>
         </Modal>
+
+        {/* Video Preview Lightbox */}
+        {previewVideo && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in-up"
+            onClick={() => setPreviewVideo(null)}
+          >
+            <button
+              onClick={() => setPreviewVideo(null)}
+              className={`absolute top-4 right-4 z-10 p-2 rounded-full transition-all duration-300 hover-lift ${
+                dark ? 'bg-neutral-800/80 text-neutral-200 hover:bg-neutral-700' : 'bg-white/80 text-stone-800 hover:bg-white'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <div className="w-full max-w-4xl" onClick={(e) => e.stopPropagation()}>
+              {isImageFile(previewVideo) ? (
+                <img src={previewVideo} alt="Preview" className="w-full max-h-[85vh] object-contain rounded-xl" />
+              ) : (
+                <video src={previewVideo} controls autoPlay className="w-full max-h-[85vh] object-contain rounded-xl" />
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </AppLayout>
   );

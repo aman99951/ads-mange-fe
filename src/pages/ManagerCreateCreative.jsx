@@ -94,14 +94,13 @@ function renderTransition(ctx, fromVideo, toVideo, progress, type, w, h) {
   const p = Math.max(0, Math.min(1, progress));
   switch (type) {
     case 'fade':
-      ctx.globalAlpha = 1 - p;
       ctx.drawImage(fromVideo, 0, 0, w, h);
       ctx.globalAlpha = p;
       ctx.drawImage(toVideo, 0, 0, w, h);
       ctx.globalAlpha = 1;
       break;
     case 'dissolve':
-      ctx.globalAlpha = 1 - p * 0.5;
+      ctx.globalAlpha = 1 - p;
       ctx.drawImage(fromVideo, 0, 0, w, h);
       ctx.globalAlpha = p;
       ctx.drawImage(toVideo, 0, 0, w, h);
@@ -137,14 +136,14 @@ function renderTransition(ctx, fromVideo, toVideo, progress, type, w, h) {
     }
     case 'slide-right': {
       const sx = Math.floor(w * p);
-      ctx.drawImage(toVideo, 0, 0, w, h, 0, 0, w, h);
-      ctx.drawImage(fromVideo, sx - w, 0, w, h, 0, 0, w, h);
+      ctx.drawImage(fromVideo, 0, 0, w, h, 0, 0, w, h);
+      ctx.drawImage(toVideo, sx - w, 0, w, h, 0, 0, w, h);
       break;
     }
     case 'slide-left': {
       const sl = Math.floor(w * p);
-      ctx.drawImage(toVideo, 0, 0, w, h, 0, 0, w, h);
-      ctx.drawImage(fromVideo, w - sl, 0, w, h, 0, 0, w, h);
+      ctx.drawImage(fromVideo, 0, 0, w, h, 0, 0, w, h);
+      ctx.drawImage(toVideo, w - sl, 0, w, h, 0, 0, w, h);
       break;
     }
     case 'zoom-in': {
@@ -190,23 +189,22 @@ async function mergeVideosClientSide(clips, outputW, outputH, fps = 30, onProgre
   const videos = await Promise.all(clips.map((clip, i) => new Promise((resolve, reject) => {
     const v = document.createElement('video');
     v.crossOrigin = 'anonymous';
-    v.muted = true;
     v.preload = 'auto';
+    v.muted = true;
+    v.playsInline = true;
+    v.style.position = 'absolute';
+    v.style.left = '-9999px';
+    v.style.width = '1px';
+    v.style.height = '1px';
+    document.body.appendChild(v);
     v.src = clip.url;
-    v.onloadedmetadata = () => { v.currentTime = 0; resolve(v); };
     v.onerror = () => reject(new Error(`Failed to load video ${i + 1}`));
-    // Fallback: some browsers need timeupdate
-    v.addEventListener('loadeddata', () => { if (v.readyState >= 2) resolve(v); });
-    setTimeout(() => { if (!v.readyState) reject(new Error(`Timeout loading video ${i + 1}`)); }, 15000);
+    v.addEventListener('loadedmetadata', () => resolve(v), { once: true });
+    setTimeout(() => reject(new Error(`Timeout loading video ${i + 1}`)), 15000);
   })));
 
-  // Calculate total frames
-  const clipDurations = clips.map((c, i) => {
-    const v = videos[i];
-    const dur = v.duration || c.duration || 5;
-    return dur;
-  });
-
+  // Calculate timings
+  const clipDurations = clips.map((c, i) => videos[i].duration || c.duration || 5);
   let totalDuration = 0;
   const clipStartTimes = [];
   for (let i = 0; i < totalClips; i++) {
@@ -215,104 +213,133 @@ async function mergeVideosClientSide(clips, outputW, outputH, fps = 30, onProgre
     if (i < totalClips - 1) totalDuration += TRANSITION_DURATION;
   }
 
-  const totalFrames = Math.ceil(totalDuration * fps);
-
-  // Set up canvas
+  // Canvas + Audio setup
   const canvas = document.createElement('canvas');
   canvas.width = outputW;
   canvas.height = outputH;
   const ctx = canvas.getContext('2d');
 
-  // Set up MediaRecorder
-  const stream = canvas.captureStream(fps);
+  let audioCtx = null;
+  let audioDest = null;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioDest = audioCtx.createMediaStreamDestination();
+    const audioBuffers = await Promise.all(clips.map(async (clip) => {
+      try {
+        const resp = await fetch(clip.url);
+        return await audioCtx.decodeAudioData(await resp.arrayBuffer());
+      } catch { return null; }
+    }));
+    const scheduleAhead = audioCtx.currentTime + 0.3;
+    for (let i = 0; i < totalClips; i++) {
+      const buf = audioBuffers[i];
+      if (!buf) continue;
+      const source = audioCtx.createBufferSource();
+      source.buffer = buf;
+      const gain = audioCtx.createGain();
+      source.connect(gain);
+      gain.connect(audioDest);
+      const clipGainStart = scheduleAhead + clipStartTimes[i];
+      const clipGainEnd = scheduleAhead + clipStartTimes[i] + clipDurations[i];
+      gain.gain.setValueAtTime(0, clipGainStart);
+      gain.gain.linearRampToValueAtTime(1, clipGainStart + 0.02);
+      gain.gain.setValueAtTime(1, clipGainEnd);
+      gain.gain.linearRampToValueAtTime(0, clipGainEnd + TRANSITION_DURATION + 0.02);
+      source.start(clipGainStart);
+      source.stop(clipGainEnd + TRANSITION_DURATION + 0.1);
+    }
+  } catch { audioCtx = null; audioDest = null; }
+
+  // MediaRecorder
+  const canvasStream = canvas.captureStream(fps);
+  const stream = audioDest
+    ? new MediaStream([...canvasStream.getVideoTracks(), ...audioDest.stream.getAudioTracks()])
+    : canvasStream;
   const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
     ? 'video/webm;codecs=vp9'
     : MediaRecorder.isTypeSupported('video/webm;codecs=vp8')
       ? 'video/webm;codecs=vp8'
       : 'video/webm';
-
-  const recordedChunks = [];
+  const chunks = [];
   const recorder = new MediaRecorder(stream, { mimeType });
-  recorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
-
-  const resultPromise = new Promise((resolve, reject) => {
-    recorder.onstop = () => {
-      const blob = new Blob(recordedChunks, { type: mimeType });
-      resolve(blob);
-    };
-    recorder.onerror = (e) => reject(e);
-  });
-
+  recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+  const resultPromise = new Promise(r => { recorder.onstop = () => r(new Blob(chunks, { type: mimeType })); });
+  // Play-through render: play each clip at normal speed, capture via rAF
   recorder.start();
+  let elapsedTotal = 0;
 
-  // Render frames
-  for (let frame = 0; frame < totalFrames; frame++) {
-    const time = frame / fps;
+  for (let clipIdx = 0; clipIdx < totalClips; clipIdx++) {
+    const video = videos[clipIdx];
+    const clipDur = clipDurations[clipIdx];
+    const isLast = clipIdx === totalClips - 1;
 
-    // Find which clip and local time
-    let clipIndex = 0;
-    let localTime = time;
-    let inTransition = false;
-    let transitionProgress = 0;
+    // First clip starts from 0; subsequent clips continue from where the
+    // transition left them (they were started during the previous clip's transition)
+    if (clipIdx === 0) {
+      video.currentTime = 0;
+      video.play().catch(() => {});
+    }
 
-    for (let i = totalClips - 1; i >= 0; i--) {
-      const start = clipStartTimes[i];
-      const end = start + clipDurations[i];
-      if (time >= start && time < end) {
-        clipIndex = i;
-        localTime = time - start;
-        inTransition = false;
-        break;
-      }
-      // Check transition region
-      if (i < totalClips - 1) {
-        const transStart = clipStartTimes[i] + clipDurations[i];
-        const transEnd = transStart + TRANSITION_DURATION;
-        if (time >= transStart && time < transEnd) {
-          clipIndex = i;
-          localTime = time - clipStartTimes[i];
-          inTransition = true;
-          transitionProgress = (time - transStart) / TRANSITION_DURATION;
-          break;
+    const segmentStart = performance.now();
+
+    // Phase 1: play full clip
+    await new Promise(resolvePhase => {
+      const draw = () => {
+        const elapsed = (performance.now() - segmentStart) / 1000;
+
+        if (elapsed >= clipDur) {
+          video.pause();
+          resolvePhase();
+          return;
         }
-      }
-    }
 
-    // Seek clips
-    try {
-      const currentClip = videos[clipIndex];
-      currentClip.currentTime = Math.min(localTime, currentClip.duration - 0.01);
-
-      if (inTransition && clipIndex + 1 < totalClips) {
-        const nextClip = videos[clipIndex + 1];
-        const nextLocalTime = time - clipStartTimes[clipIndex + 1] + TRANSITION_DURATION;
-        nextClip.currentTime = Math.min(nextLocalTime, nextClip.duration - 0.01);
-        // Wait for seek
-        await Promise.all([
-          new Promise(r => { if (currentClip.readyState >= 2) r(); else { currentClip.onseeked = r; setTimeout(r, 100); } }),
-          new Promise(r => { if (nextClip.readyState >= 2) r(); else { nextClip.onseeked = r; setTimeout(r, 100); } }),
-        ]);
-        renderTransition(ctx, currentClip, nextClip, transitionProgress, clips[clipIndex].transition || 'fade', outputW, outputH);
-      } else {
-        await new Promise(r => { if (currentClip.readyState >= 2) r(); else { currentClip.onseeked = r; setTimeout(r, 100); } });
         ctx.clearRect(0, 0, outputW, outputH);
-        ctx.drawImage(currentClip, 0, 0, outputW, outputH);
-      }
-    } catch (e) {
-      // Fallback frame
-      ctx.clearRect(0, 0, outputW, outputH);
-      ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, outputW, outputH);
-    }
+        ctx.drawImage(video, 0, 0, outputW, outputH);
 
-    // Report progress
-    if (frame % Math.max(1, Math.floor(totalFrames / 20)) === 0) {
-      onProgress?.(Math.round((frame / totalFrames) * 100));
+        elapsedTotal = clipStartTimes[clipIdx] + elapsed;
+        onProgress?.(Math.round((elapsedTotal / totalDuration) * 100));
+
+        requestAnimationFrame(draw);
+      };
+      requestAnimationFrame(draw);
+    });
+
+    // Phase 2: transition to next clip
+    if (!isLast) {
+      const nextClip = videos[clipIdx + 1];
+      nextClip.currentTime = 0;
+      nextClip.play().catch(() => {});
+
+      await new Promise(resolvePhase => {
+        const transitionStart = performance.now();
+
+        const draw = () => {
+          const elapsed = (performance.now() - transitionStart) / 1000;
+
+          if (elapsed >= TRANSITION_DURATION) {
+            nextClip.play().catch(() => {}); // keep playing
+            resolvePhase();
+            return;
+          }
+
+          const transProgress = elapsed / TRANSITION_DURATION;
+          ctx.clearRect(0, 0, outputW, outputH);
+          renderTransition(ctx, video, nextClip, Math.min(1, transProgress), clips[clipIdx].transition || 'fade', outputW, outputH);
+
+          elapsedTotal = clipStartTimes[clipIdx] + clipDur + elapsed;
+          onProgress?.(Math.round((elapsedTotal / totalDuration) * 100));
+
+          requestAnimationFrame(draw);
+        };
+        requestAnimationFrame(draw);
+      });
     }
   }
 
   recorder.stop();
   const blob = await resultPromise;
+  videos.forEach(v => { if (v.parentNode) v.parentNode.removeChild(v); });
+  if (audioCtx) audioCtx.close().catch(() => {});
   return blob;
 }
 
@@ -480,11 +507,13 @@ function TransitionSelector({ value, onChange, dark }) {
 }
 
 /* ───────── Video Merger Panel ───────── */
-function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError }) {
+function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError, currentSessionId }) {
   const [timeline, setTimeline] = useState([]);
   const [merging, setMerging] = useState(false);
   const [mergeProgress, setMergeProgress] = useState(0);
   const [previewBlob, setPreviewBlob] = useState(null);
+  const [savingMerge, setSavingMerge] = useState(false);
+  const [mergeSaved, setMergeSaved] = useState(false);
   const [mergeWidth, setMergeWidth] = useState(1920);
   const [mergeHeight, setMergeHeight] = useState(1080);
   // Filter only video assets
@@ -529,6 +558,7 @@ function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError 
     setMerging(true);
     setMergeProgress(0);
     setPreviewBlob(null);
+    setMergeSaved(false);
     setError('');
     try {
       const blob = await mergeVideosClientSide(timeline, mergeWidth, mergeHeight, 30, setMergeProgress);
@@ -547,12 +577,43 @@ function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError 
         duration: Math.round(totalDur),
         id: Date.now(),
         isMerged: true,
+        created_at: new Date().toISOString(),
       }]);
     } catch (err) {
       setError(err.message);
     } finally {
       setMerging(false);
       setMergeProgress(0);
+    }
+  };
+
+  const handleSaveMerge = async () => {
+    if (!previewBlob || !currentSessionId || mergeSaved) return;
+    setSavingMerge(true);
+    try {
+      const totalDur = timeline.reduce((acc, t, i) => {
+        return acc + (t.duration || 5) + (i < timeline.length - 1 ? TRANSITION_DURATION : 0);
+      }, 0);
+      const file = new File([previewBlob], 'merged-video.webm', { type: 'video/webm' });
+      const uploadRes = await creativeSessions.uploadMedia(file);
+      await creativeSessions.addEvent(currentSessionId, {
+        event_type: 'merge',
+        prompt: `Merged video (${timeline.length} clips)`,
+        file: uploadRes.url,
+        settings: {
+          width: mergeWidth,
+          height: mergeHeight,
+          duration: Math.round(totalDur),
+          clip_count: timeline.length,
+        },
+      });
+      setMergeSaved(true);
+      const updated = await creativeSessions.list().catch(() => null);
+      if (updated) { /* sessions list refreshed */ }
+    } catch {
+      setError('Failed to save merged video to session');
+    } finally {
+      setSavingMerge(false);
     }
   };
 
@@ -776,6 +837,25 @@ function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError 
                 </svg>
                 Download .webm
               </Button>
+              {currentSessionId && (
+                <Button
+                  onClick={handleSaveMerge}
+                  loading={savingMerge}
+                  disabled={savingMerge || mergeSaved}
+                  className="!py-2 !text-xs !px-4"
+                >
+                  {mergeSaved ? (
+                    <>Saved ✓</>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
+                      </svg>
+                      Save Merged Video
+                    </>
+                  )}
+                </Button>
+              )}
               <span className={`text-[9px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
                 Merged at {mergeWidth}×{mergeHeight}
               </span>
@@ -836,9 +916,32 @@ export default function ManagerCreateCreative() {
     const s = Math.floor(seconds % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
+  const handleCaptureReference = (videoUrl) => {
+    const video = document.createElement('video');
+    video.crossOrigin = 'anonymous';
+    video.muted = true;
+    video.preload = 'auto';
+    video.src = videoUrl;
+    video.onloadeddata = () => {
+      video.currentTime = 0;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      const base64 = canvas.toDataURL('image/png');
+      setReferenceImage({ base64, mimeType: 'image/png' });
+      video.remove();
+      canvas.remove();
+    };
+    video.onerror = () => {
+      setError('Could not load video for frame capture.');
+      video.remove();
+    };
+  };
   const [enhancing, setEnhancing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [showRevisionPanel, setShowRevisionPanel] = useState(true);
+  const [referenceImage, setReferenceImage] = useState(null);
   const [generatedAssets, setGeneratedAssets] = useState([]);
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [showNegative, setShowNegative] = useState(false);
@@ -943,15 +1046,19 @@ export default function ManagerCreateCreative() {
       // Load generated assets from session events
       if (session.events?.length) {
         const assets = session.events
-          .filter(e => e.event_type === 'generate' && e.file)
+          .filter(e => (e.event_type === 'generate' || e.event_type === 'merge') && e.file)
           .map(e => ({
             id: e.id,
             mediaId: e.id,
-            type: session.media_type,
+            type: e.event_type === 'merge' ? 'video' : session.media_type,
             url: e.file,
             prompt: e.prompt || '',
             model: e.model_used || '',
-            duration: e.duration_seconds,
+            duration: e.duration_seconds || e.settings?.duration || null,
+            width: e.settings?.width || null,
+            height: e.settings?.height || null,
+            isMerged: e.event_type === 'merge',
+            created_at: e.created_at,
           }));
         setGeneratedAssets(assets);
         if (assets.length > 0) setSelectedAsset(assets[assets.length - 1]);
@@ -1005,6 +1112,9 @@ export default function ManagerCreateCreative() {
     // Save current session before switching
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     await saveCurrentSession();
+    setReferenceImage(null);
+    setGeneratedAssets([]);
+    setSelectedAsset(null);
     await loadSession(sessionId);
   };
 
@@ -1144,6 +1254,7 @@ export default function ManagerCreateCreative() {
           type: 'image', url: result.url, prompt: prompt.trim(),
           width, height, style, model: result.model_used,
           id: Date.now(), mediaId: result.generated_media_id,
+          created_at: new Date().toISOString(),
         };
         setGeneratedAssets(prev => [...prev, newAsset]);
         setSelectedAsset(newAsset);
@@ -1158,17 +1269,22 @@ export default function ManagerCreateCreative() {
         }
       } else {
         const perClipDuration = duration > 8 ? 8 : [4, 6, 8].reduce((a, b) => Math.abs(b - duration) < Math.abs(a - duration) ? b : a);
-        const result = await ads.generateVideoClip({
+        const generatePayload = {
           prompt: prompt.trim(),
           aspect_ratio: aspectRatio,
           duration_seconds: perClipDuration,
           target_duration_seconds: duration,
           model: selectedVideoModel,
-        });
+        };
+        if (referenceImage) {
+          generatePayload.input_image = referenceImage.base64;
+        }
+        const result = await ads.generateVideoClip(generatePayload);
         const newAsset = {
           type: 'video', url: result.url, prompt: prompt.trim(),
-          width, height, duration, model: result.model_used,
+          width, height, duration: result.target_duration_seconds || result.duration_seconds || duration, model: result.model_used,
           id: Date.now(), mediaId: result.generated_media_id,
+          created_at: new Date().toISOString(),
         };
         setGeneratedAssets(prev => [...prev, newAsset]);
         setSelectedAsset(newAsset);
@@ -1221,7 +1337,8 @@ export default function ManagerCreateCreative() {
   const handleEditAsset = (asset) => {
     setMode('generate');
     setMediaType(asset.type);
-    setPrompt(asset.prompt || '');
+    const basePrompt = asset.prompt ? `Edit this ${asset.type}: ${asset.prompt}.` : `Edit this ${asset.type}.`;
+    setPrompt(basePrompt + ' ');
     setWidth(asset.width || 1024);
     setHeight(asset.height || 1024);
     setStyle(asset.style || null);
@@ -1229,9 +1346,16 @@ export default function ManagerCreateCreative() {
       setDuration(asset.duration);
     }
     setSelectedAsset(asset);
+    if (asset.url) {
+      handleCaptureReference(asset.url);
+    }
     setTimeout(() => {
       const promptEl = document.querySelector('textarea');
-      if (promptEl) promptEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (promptEl) {
+        promptEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        promptEl.focus();
+        promptEl.setSelectionRange(promptEl.value.length, promptEl.value.length);
+      }
     }, 100);
   };
 
@@ -1271,11 +1395,11 @@ export default function ManagerCreateCreative() {
         {/* Main Content */}
         <div className="flex-1 overflow-auto">
           <div className={`${mode === 'merge' ? 'max-w-[900px]' : 'max-w-[1100px]'} mx-auto p-6 lg:p-8`}>
-            {/* Back button only */}
+            {/* Back button — returns to the page the user came from */}
             <button
               onClick={() => {
                 if (window.confirm('Do you want to exit this page? Any unsaved progress will be lost.')) {
-                  navigate('/manager/dashboard');
+                  navigate(-1);
                 }
               }}
               className={`flex items-center gap-1.5 mb-5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -1365,6 +1489,7 @@ export default function ManagerCreateCreative() {
                     generatedAssets={generatedAssets}
                     setGeneratedAssets={setGeneratedAssets}
                     setError={setError}
+                    currentSessionId={currentSessionId}
                   />
                 </div>
                 {/* Gallery also visible in merge mode */}
@@ -1382,7 +1507,7 @@ export default function ManagerCreateCreative() {
                         </span>
                       </div>
                       <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8">
-                        {generatedAssets.map((asset) => (
+                        {[...generatedAssets].sort((a, b) => (b.created_at || b.id) - (a.created_at || a.id)).map((asset) => (
                           <div
                             key={asset.id}
                             onClick={() => setSelectedAsset(asset)}
@@ -1552,11 +1677,21 @@ export default function ManagerCreateCreative() {
                             dark ? 'border-neutral-800' : 'border-stone-100'
                           }`}>
                             <span className={`text-xs font-semibold ${dark ? 'text-neutral-200' : 'text-neutral-800'}`}>Main Video</span>
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono ${
-                              dark ? 'bg-neutral-800 text-neutral-400' : 'bg-stone-100 text-stone-500'
-                            }`}>
-                              {adFinalAsset.width}×{adFinalAsset.height}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleCaptureReference(adFinalAsset)}
+                                className={`px-2 py-0.5 rounded text-[9px] font-medium transition-colors ${
+                                  dark ? 'bg-amber-500/10 text-amber-300 hover:bg-amber-500/20' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                }`}
+                              >
+                                Edit This
+                              </button>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono ${
+                                dark ? 'bg-neutral-800 text-neutral-400' : 'bg-stone-100 text-stone-500'
+                              }`}>
+                                {adFinalAsset.width}×{adFinalAsset.height}
+                              </span>
+                            </div>
                           </div>
                           <div className="p-3">
                             <video
@@ -1604,11 +1739,21 @@ export default function ManagerCreateCreative() {
                                 {la.language_code?.toUpperCase()}
                               </span>
                             </div>
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono ${
-                              dark ? 'bg-neutral-800 text-neutral-400' : 'bg-stone-100 text-stone-500'
-                            }`}>
-                              {la.width}×{la.height}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleCaptureReference(la.asset)}
+                                className={`px-2 py-0.5 rounded text-[9px] font-medium transition-colors ${
+                                  dark ? 'bg-amber-500/10 text-amber-300 hover:bg-amber-500/20' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                }`}
+                              >
+                                Edit This
+                              </button>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono ${
+                                dark ? 'bg-neutral-800 text-neutral-400' : 'bg-stone-100 text-stone-500'
+                              }`}>
+                                {la.width}×{la.height}
+                              </span>
+                            </div>
                           </div>
                           <div className="p-3">
                             <video
@@ -1903,6 +2048,29 @@ export default function ManagerCreateCreative() {
                   </div>
                 )}
 
+                {/* ─── Reference Image Preview ─── */}
+                {referenceImage && (
+                  <div className={`rounded-xl border mb-4 px-4 py-3 flex items-center gap-3 animate-fade-in-up ${
+                    dark ? 'bg-amber-500/5 border-amber-500/30' : 'bg-amber-50 border-amber-300'
+                  }`}>
+                    <img src={referenceImage.base64} alt="Reference" className="w-16 h-16 rounded-lg object-cover border flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-xs font-bold ${dark ? 'text-amber-300' : 'text-amber-800'}`}>Editing from reference frame</p>
+                      <p className={`text-[10px] ${dark ? 'text-amber-400/70' : 'text-amber-600'}`}>
+                        Your prompt will be applied to this frame. The AI will generate a new video based on this image + your prompt.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setReferenceImage(null)}
+                      className={`p-1.5 rounded-lg transition-colors ${dark ? 'text-amber-400/50 hover:text-amber-300 hover:bg-amber-500/10' : 'text-amber-600/50 hover:text-amber-800 hover:bg-amber-100'}`}
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+
                 {/* ─── Main Content: Prompt (left) + Preview (right) ─── */}
                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
                   {/* Prompt */}
@@ -2016,9 +2184,35 @@ export default function ManagerCreateCreative() {
                       <h3 className={`text-xs font-semibold ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>
                         Generated Assets <span className={`text-[9px] font-normal ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>({generatedAssets.length})</span>
                       </h3>
+                      {adId && (
+                        <button
+                          onClick={handlePublishToCampaign}
+                          disabled={publishing}
+                          className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all disabled:opacity-40 flex items-center gap-1.5 ${
+                            dark ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border border-emerald-200'
+                          }`}
+                        >
+                          {publishing ? (
+                            <>
+                              <svg className="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                              </svg>
+                              Saving...
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              Save to Campaign
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
-                    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
-                      {generatedAssets.map((asset) => (
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
+                      {[...generatedAssets].sort((a, b) => (b.created_at || b.id) - (a.created_at || a.id)).map((asset) => (
                         <div
                           key={asset.id}
                           onClick={() => setSelectedAsset(asset)}
@@ -2030,7 +2224,7 @@ export default function ManagerCreateCreative() {
                         >
                           <div className="w-full aspect-square">
                             {asset.type === 'video' ? (
-                              <video src={asset.url} className="w-full h-full object-cover" muted />
+                              <video src={asset.url} className="w-full h-full object-cover" muted autoPlay playsInline loop />
                             ) : (
                               <img src={asset.url} alt="" className="w-full h-full object-cover" />
                             )}
@@ -2053,10 +2247,13 @@ export default function ManagerCreateCreative() {
                               >🗑️</button>
                             </div>
                           </div>
-                          <div className={`absolute bottom-0.5 left-0.5 px-1 py-0.5 rounded text-[7px] font-medium ${
-                            dark ? 'bg-neutral-900/80 text-neutral-500' : 'bg-white/80 text-stone-400'
+                          <div className={`absolute bottom-0 left-0 right-0 px-1 py-1 rounded text-[9px] font-medium leading-tight ${
+                            dark ? 'bg-neutral-900/85 text-neutral-300' : 'bg-white/85 text-stone-600'
                           }`}>
                             {asset.width}×{asset.height}{asset.type === 'video' && asset.duration ? ` · ${asset.duration}s` : ''}
+                            {asset.created_at && (
+                              <div className="text-[8px] opacity-90">{new Date(asset.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })} {new Date(asset.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                            )}
                           </div>
                         </div>
                       ))}

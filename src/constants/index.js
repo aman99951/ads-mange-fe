@@ -50,6 +50,7 @@ export const ROUTES = {
   MANAGER_AD_DETAIL: '/manager/ads/:id',
   MANAGER_TARGET_AREAS: '/manager/target-areas',
   MANAGER_CREATE_CREATIVE: '/manager/create-creative',
+  MANAGER_REVISIONS: '/manager/revisions',
   DEVELOPER_LOGIN: '/developer',
   DEVELOPER_REGISTER: '/developer/register',
   DEVELOPER_DASHBOARD: '/developer/dashboard',

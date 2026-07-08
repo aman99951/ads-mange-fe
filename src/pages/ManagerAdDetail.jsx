@@ -552,19 +552,28 @@ export default function ManagerAdDetail() {
                 </div>
               </div>
               <Button
-                onClick={() => navigate('/manager/create-creative', {
-                  state: {
-                    prompt: ad.description || ad.text_content || '',
-                    languages: ad.languages || [],
-                    mediaType: ad.content_type || 'video',
-                    dimensions: ad.content_size || '',
-                    videoFeedback: ad.video_feedback || [],
-                    revisionSummary: ad.iterations?.filter(i => i.created_by === 'client').slice(-1)[0]?.feedback || '',
-                    adId: ad.id,
-                    finalAsset: ad.final_asset || null,
-                    languageAssets: ad.language_assets?.filter(a => a.asset && a.status === 'completed') || [],
-                  }
-                })}
+                onClick={() => {
+                  // Only pass feedback created after the last admin update
+                  const lastAdminIteration = [...(ad.iterations || [])]
+                    .filter(i => i.created_by === 'admin')
+                    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+                  const currentFeedback = lastAdminIteration
+                    ? (ad.video_feedback || []).filter(fb => new Date(fb.created_at) > new Date(lastAdminIteration.created_at))
+                    : (ad.video_feedback || []);
+                  navigate('/manager/create-creative', {
+                    state: {
+                      prompt: ad.description || ad.text_content || '',
+                      languages: ad.languages || [],
+                      mediaType: ad.content_type || 'video',
+                      dimensions: ad.content_size || '',
+                      videoFeedback: currentFeedback,
+                      revisionSummary: ad.iterations?.filter(i => i.created_by === 'client').slice(-1)[0]?.feedback || '',
+                      adId: ad.id,
+                      finalAsset: ad.final_asset || null,
+                      languageAssets: ad.language_assets?.filter(a => a.asset && a.status === 'completed') || [],
+                    }
+                  });
+                }}
                 className="w-full !py-3.5 !text-sm !font-bold !rounded-2xl"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

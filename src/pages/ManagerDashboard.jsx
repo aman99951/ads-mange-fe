@@ -32,12 +32,20 @@ const QUICK_ACTIONS = [
     path: '/manager/target-areas',
     color: 'from-blue-500 to-cyan-400',
   },
+  {
+    label: 'View Revisions',
+    desc: 'Review campaigns pending revision',
+    icon: 'M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182',
+    path: '/manager/revisions',
+    color: 'from-rose-500 to-orange-400',
+  },
 ];
 
 const statIcons = {
   total: 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z',
   pending: 'M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z',
   approved: 'M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+  revision: 'M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182',
 };
 
 export default function ManagerDashboard() {
@@ -67,6 +75,8 @@ export default function ManagerDashboard() {
     revision_requested: allAds.filter(a => a.status === 'revision_requested').length,
   };
 
+  const recentRevisions = allAds.filter(a => a.status === 'revision_requested').slice(0, 5);
+
   return (
     <AppLayout fullWidth>
       <div className="max-w-[1400px] mx-auto">
@@ -87,23 +97,24 @@ export default function ManagerDashboard() {
 
         {/* Stats */}
         {!loading && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5 mb-8 animate-fade-in-up animate-delay-100">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-8 animate-fade-in-up animate-delay-100">
             <StatCard icon={statIcons.total} label="Total Campaigns" value={counts.total} accent="total" index={0} />
             <StatCard icon={statIcons.pending} label="Pending Review" value={counts.pending_approval} accent="pending" index={1} />
             <StatCard icon={statIcons.approved} label="Approved" value={counts.approved} accent="approved" index={2} />
+            <StatCard icon={statIcons.revision} label="Revision Requests" value={counts.revision_requested} accent="pending" index={3} />
           </div>
         )}
 
         {loading && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5 mb-8">
-            {[1,2,3].map(i => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-8">
+            {[1,2,3,4].map(i => (
               <div key={i} className={`h-28 rounded-2xl animate-pulse ${dark ? 'bg-neutral-900/60 border border-neutral-800' : 'bg-stone-100 border border-stone-200'}`} />
             ))}
           </div>
         )}
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 animate-fade-in-up animate-delay-200">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 animate-fade-in-up animate-delay-200">
           {QUICK_ACTIONS.map((action, i) => (
             <button
               key={action.label}
@@ -140,9 +151,51 @@ export default function ManagerDashboard() {
                   {counts.pending_approval}
                 </div>
               )}
+              {action.label === 'View Revisions' && counts.revision_requested > 0 && (
+                <div className={`absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                  dark ? 'bg-rose-500 text-white' : 'bg-rose-500 text-white'
+                } shadow-lg`}>
+                  {counts.revision_requested}
+                </div>
+              )}
             </button>
           ))}
         </div>
+
+        {/* Recent Revisions */}
+        {!loading && recentRevisions.length > 0 && (
+          <div className="mt-8 animate-fade-in-up animate-delay-250">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className={`text-sm font-bold ${c(dark ? 'dark' : 'light').text}`}>Pending Revisions</h3>
+              <button
+                onClick={() => navigate('/manager/revisions')}
+                className={`text-[10px] font-medium transition-colors ${dark ? 'text-amber-400 hover:text-amber-300' : 'text-amber-700 hover:text-amber-600'}`}
+              >
+                View all →
+              </button>
+            </div>
+            <div className="space-y-2">
+              {recentRevisions.map((ad) => (
+                <button
+                  key={ad.id}
+                  onClick={() => navigate(`/manager/campaigns/${ad.id}`)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs transition-all duration-200 ${
+                    dark
+                      ? 'bg-neutral-900/40 border border-neutral-800/50 hover:bg-neutral-800/60 hover:border-neutral-700'
+                      : 'bg-stone-50/60 border border-stone-200/50 hover:bg-stone-100 hover:border-stone-300'
+                  }`}
+                >
+                  <div className="w-2 h-2 rounded-full flex-shrink-0 bg-rose-500" />
+                  <span className={`flex-1 text-left font-medium truncate ${c(dark ? 'dark' : 'light').text}`}>{ad.title}</span>
+                  <span className={`flex-shrink-0 ${c(dark ? 'dark' : 'light').textMuted}`}>{ad.client_name}</span>
+                  <span className={`px-2 py-0.5 rounded text-[9px] font-medium ${
+                    dark ? 'bg-rose-500/10 text-rose-400' : 'bg-rose-50 text-rose-600'
+                  }`}>revision requested</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Recent Activity */}
         {!loading && allAds.length > 0 && (
