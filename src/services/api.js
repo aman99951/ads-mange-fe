@@ -153,6 +153,18 @@ export const developerApps = {
   delete: (id) => request(`/developer/apps/${id}/`, { method: 'DELETE' }),
 };
 
+export const apiTracker = {
+  getLogs: (params = '') => request(`/api-tracking-logs/${params ? `?${params}` : ''}`),
+};
+
+export const creditUsage = {
+  log: (data) => request('/credit-usage/log/', { method: 'POST', body: JSON.stringify(data) }),
+  monthlyStats: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/credit-usage/monthly-stats/${query ? `?${query}` : ''}`);
+  },
+};
+
 export const creativeSessions = {
   list: () => request('/creative-sessions/'),
   create: (data) => request('/creative-sessions/', { method: 'POST', body: JSON.stringify(data) }),

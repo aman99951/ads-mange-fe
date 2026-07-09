@@ -2,10 +2,15 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { colors } from '../config/theme';
-import { ads, managerSettings, creativeSessions } from '../services/api';
+import { ads, managerSettings, creativeSessions, creditUsage } from '../services/api';
 import AppLayout from '../components/layout/AppLayout';
 import ErrorAlert from '../components/layout/ErrorAlert';
 import Button from '../components/ui/Button';
+import VideoTrimmer from '../components/video/VideoTrimmer';
+import AssetLightbox from '../components/ui/AssetLightbox';
+
+// Module-level guard that survives React Strict Mode remounts
+let _fetchingSessions = false;
 
 const c = (k) => colors[k];
 
@@ -89,7 +94,7 @@ const TRANSITION_OPTIONS = [
 
 const TRANSITION_DURATION = 0.5; // seconds
 
-/* ───────── Canvas-based video merge engine ───────── */
+/* ───────── Canvas-based video merge engine (with trim support) ───────── */
 function renderTransition(ctx, fromVideo, toVideo, progress, type, w, h) {
   const p = Math.max(0, Math.min(1, progress));
   switch (type) {
@@ -203,8 +208,13 @@ async function mergeVideosClientSide(clips, outputW, outputH, fps = 30, onProgre
     setTimeout(() => reject(new Error(`Timeout loading video ${i + 1}`)), 15000);
   })));
 
-  // Calculate timings
-  const clipDurations = clips.map((c, i) => videos[i].duration || c.duration || 5);
+  // Calculate timings (respecting trimStart/trimEnd)
+  const clipDurations = clips.map((c, i) => {
+    const fullDur = videos[i].duration || c.duration || 5;
+    const start = c.trimStart || 0;
+    const end = c.trimEnd || fullDur;
+    return Math.max(0.1, end - start);
+  });
   let totalDuration = 0;
   const clipStartTimes = [];
   for (let i = 0; i < totalClips; i++) {
@@ -245,7 +255,10 @@ async function mergeVideosClientSide(clips, outputW, outputH, fps = 30, onProgre
       gain.gain.linearRampToValueAtTime(1, clipGainStart + 0.02);
       gain.gain.setValueAtTime(1, clipGainEnd);
       gain.gain.linearRampToValueAtTime(0, clipGainEnd + TRANSITION_DURATION + 0.02);
-      source.start(clipGainStart);
+      const clipTrimStart = clips[i].trimStart || 0;
+      const clipTrimEnd = clips[i].trimEnd || buf.duration;
+      const clipTrimmedDur = Math.max(0.1, clipTrimEnd - clipTrimStart);
+      source.start(clipGainStart, clipTrimStart, clipTrimmedDur);
       source.stop(clipGainEnd + TRANSITION_DURATION + 0.1);
     }
   } catch { audioCtx = null; audioDest = null; }
@@ -276,13 +289,13 @@ async function mergeVideosClientSide(clips, outputW, outputH, fps = 30, onProgre
     // First clip starts from 0; subsequent clips continue from where the
     // transition left them (they were started during the previous clip's transition)
     if (clipIdx === 0) {
-      video.currentTime = 0;
+      video.currentTime = clips[clipIdx].trimStart || 0;
       video.play().catch(() => {});
     }
 
     const segmentStart = performance.now();
 
-    // Phase 1: play full clip
+    // Phase 1: play trimmed clip segment
     await new Promise(resolvePhase => {
       const draw = () => {
         const elapsed = (performance.now() - segmentStart) / 1000;
@@ -307,7 +320,8 @@ async function mergeVideosClientSide(clips, outputW, outputH, fps = 30, onProgre
     // Phase 2: transition to next clip
     if (!isLast) {
       const nextClip = videos[clipIdx + 1];
-      nextClip.currentTime = 0;
+      const nextTrimStart = clips[clipIdx + 1].trimStart || 0;
+      nextClip.currentTime = nextTrimStart;
       nextClip.play().catch(() => {});
 
       await new Promise(resolvePhase => {
@@ -401,8 +415,8 @@ function Sidebar({ dark, mode, sessions, currentSessionId, onModeChange, onSelec
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); onDeleteSession(session.id); }}
-              className={`absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[9px] ${
-                dark ? 'text-neutral-600 hover:text-red-400 hover:bg-neutral-800' : 'text-stone-400 hover:text-red-500 hover:bg-stone-100'
+              className={`absolute right-1 bottom-1 w-5 h-5 rounded flex items-center justify-center text-[9px] transition-colors ${
+                dark ? 'text-neutral-500 hover:text-red-400 hover:bg-neutral-800' : 'text-stone-400 hover:text-red-500 hover:bg-stone-100'
               }`}
               title="Delete session"
             >
@@ -516,12 +530,18 @@ function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError,
   const [mergeSaved, setMergeSaved] = useState(false);
   const [mergeWidth, setMergeWidth] = useState(1920);
   const [mergeHeight, setMergeHeight] = useState(1080);
+  // Trim state
+  const [trimmingClipIndex, setTrimmingClipIndex] = useState(null);
+  const [trimmingVideoUrl, setTrimmingVideoUrl] = useState('');
+  const [trimmingDuration, setTrimmingDuration] = useState(0);
+  const [trimmingInitialStart, setTrimmingInitialStart] = useState(0);
+  const [trimmingInitialEnd, setTrimmingInitialEnd] = useState(0);
   // Filter only video assets
   const videoAssets = generatedAssets.filter(a => a.type === 'video');
 
   const addToTimeline = (asset) => {
     if (timeline.some(t => t.id === asset.id)) return;
-    setTimeline(prev => [...prev, { ...asset, transition: 'fade', id: asset.id + '-tl-' + Date.now() }]);
+    setTimeline(prev => [...prev, { ...asset, transition: 'fade', id: asset.id + '-tl-' + Date.now(), trimStart: 0, trimEnd: 0 }]);
   };
 
   const removeFromTimeline = (tlId) => {
@@ -550,6 +570,45 @@ function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError,
     setTimeline(prev => prev.map((t, i) => i === index ? { ...t, transition: value } : t));
   };
 
+  const openTrimmer = (index) => {
+    const clip = timeline[index];
+    setTrimmingClipIndex(index);
+    setTrimmingVideoUrl(clip.url);
+    setTrimmingDuration(clip.duration || 0);
+    setTrimmingInitialStart(clip.trimStart || 0);
+    setTrimmingInitialEnd(clip.trimEnd || 0);
+  };
+
+  const handleTrimApply = (trimStart, trimEnd) => {
+    setTimeline(prev => prev.map((t, i) =>
+      i === trimmingClipIndex ? { ...t, trimStart, trimEnd } : t
+    ));
+    setTrimmingClipIndex(null);
+    setTrimmingVideoUrl('');
+  };
+
+  const handleTrimCancel = () => {
+    setTrimmingClipIndex(null);
+    setTrimmingVideoUrl('');
+  };
+
+  const hasTrim = (clip) => {
+    return clip.trimStart > 0 || (clip.trimEnd > 0 && clip.duration && clip.trimEnd < clip.duration);
+  };
+
+  const getTrimmedDuration = (clip) => {
+    if (clip.trimEnd > 0 && clip.trimStart >= 0) {
+      return clip.trimEnd - clip.trimStart;
+    }
+    return clip.duration || 5;
+  };
+
+  const getTotalTrimmedDuration = () => {
+    return timeline.reduce((acc, t, i) => {
+      return acc + getTrimmedDuration(t) + (i < timeline.length - 1 ? TRANSITION_DURATION : 0);
+    }, 0);
+  };
+
   const handleMerge = async () => {
     if (timeline.length < 2) {
       setError('Add at least 2 videos to the timeline');
@@ -565,9 +624,7 @@ function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError,
       setPreviewBlob(blob);
       // Add to generated assets
       const url = URL.createObjectURL(blob);
-      const totalDur = timeline.reduce((acc, t, i) => {
-        return acc + (t.duration || 5) + (i < timeline.length - 1 ? TRANSITION_DURATION : 0);
-      }, 0);
+      const totalDur = getTotalTrimmedDuration();
       setGeneratedAssets(prev => [...prev, {
         type: 'video',
         url,
@@ -591,9 +648,7 @@ function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError,
     if (!previewBlob || !currentSessionId || mergeSaved) return;
     setSavingMerge(true);
     try {
-      const totalDur = timeline.reduce((acc, t, i) => {
-        return acc + (t.duration || 5) + (i < timeline.length - 1 ? TRANSITION_DURATION : 0);
-      }, 0);
+      const totalDur = getTotalTrimmedDuration();
       const file = new File([previewBlob], 'merged-video.webm', { type: 'video/webm' });
       const uploadRes = await creativeSessions.uploadMedia(file);
       await creativeSessions.addEvent(currentSessionId, {
@@ -712,6 +767,21 @@ function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError,
           )}
         </div>
 
+        {/* Video Trimmer overlay */}
+        {trimmingClipIndex !== null && trimmingVideoUrl && (
+          <div className="mb-4">
+            <VideoTrimmer
+              videoUrl={trimmingVideoUrl}
+              videoDuration={trimmingDuration}
+              initialTrimStart={trimmingInitialStart}
+              initialTrimEnd={trimmingInitialEnd}
+              onApply={handleTrimApply}
+              onCancel={handleTrimCancel}
+              dark={dark}
+            />
+          </div>
+        )}
+
         {/* Timeline */}
         {timeline.length > 0 && (
           <div className="space-y-2 mb-4">
@@ -735,10 +805,30 @@ function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError,
                       {clip.prompt?.slice(0, 35) || 'Video clip'}
                     </div>
                     <div className={`text-[8px] ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
-                      {clip.duration || '~5'}s · {clip.width || '-'}×{clip.height || '-'}
+                      {(() => {
+                        if (hasTrim(clip)) {
+                          const trimmed = (clip.trimEnd - clip.trimStart).toFixed(1);
+                          return `✂ ${trimmed}s (of ${clip.duration || '~5'}s) · ${clip.width || '-'}×${clip.height || '-'}`;
+                        }
+                        return `${clip.duration || '~5'}s · ${clip.width || '-'}×${clip.height || '-'}`;
+                      })()}
                     </div>
                   </div>
                   <div className="flex items-center gap-0.5">
+                    {/* Trim button */}
+                    <button
+                      onClick={() => openTrimmer(index)}
+                      className={`p-1 rounded transition-colors ${
+                        hasTrim(clip)
+                          ? dark ? 'text-amber-400 bg-amber-500/10' : 'text-amber-600 bg-amber-50'
+                          : dark ? 'text-neutral-500 hover:text-amber-400 hover:bg-amber-500/10' : 'text-stone-400 hover:text-amber-600 hover:bg-amber-50'
+                      }`}
+                      title={hasTrim(clip) ? 'Edit trim' : 'Trim video'}
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 4v16M18 4v16M4 9h16M4 15h16" />
+                      </svg>
+                    </button>
                     <button
                       onClick={() => moveUp(index)}
                       disabled={index === 0}
@@ -776,13 +866,12 @@ function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError,
                 {/* Transition selector between clips */}
                 {index < timeline.length - 1 && (
                   <div className="flex items-center gap-2 py-1.5 pl-6">
-                    <div className={`flex-1 h-px ${dark ? 'bg-neutral-700' : 'bg-stone-200'}`} />
-                    <TransitionSelector
-                      value={clip.transition || 'fade'}
-                      onChange={(v) => setTransition(index, v)}
-                      dark={dark}
-                      clipIndex={index}
-                    />
+                    <div className={`flex-1 h-px ${dark ? 'bg-neutral-700' : 'bg-stone-200'}`} />                      <span className={`text-[8px] ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>transition:</span>
+                      <TransitionSelector
+                        value={clip.transition || 'fade'}
+                        onChange={(v) => setTransition(index, v)}
+                        dark={dark}
+                      />
                     <div className={`flex-1 h-px ${dark ? 'bg-neutral-700' : 'bg-stone-200'}`} />
                   </div>
                 )}
@@ -805,7 +894,7 @@ function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError,
             ? `Merging... ${mergeProgress}%`
             : timeline.length < 2
               ? 'Add at least 2 videos'
-              : `Merge ${timeline.length} Videos${timeline.length > 0 ? ` (${timeline.reduce((a, t, i) => a + (t.duration || 5) + (i < timeline.length - 1 ? TRANSITION_DURATION : 0), 0).toFixed(0)}s)` : ''}`
+              : `Merge ${timeline.length} Videos${timeline.length > 0 ? ` (${getTotalTrimmedDuration().toFixed(0)}s)` : ''}`
           }
         </Button>
 
@@ -880,8 +969,8 @@ const VIDEO_MODELS_DEFAULT = [
   { id: 'veo-3.1-generate-preview', name: 'Veo 3.1', credit_cost: 8, description: 'Latest cinematic video generation' },
 ];
 
-// Models that cannot extend beyond a single clip (must match backend EXTENSION_BLACKLIST)
-const VIDEO_NO_EXTENSION = new Set(['veo-3.1-lite-generate-preview']);
+// All Veo models generate up to 8s per single clip. Multi-clip splitting removed to save API costs.
+const VIDEO_NO_EXTENSION = new Set(['veo-3.1-lite-generate-preview', 'veo-3.1-fast-generate-preview', 'veo-3.1-generate-preview']);
 
 export default function ManagerCreateCreative() {
   const { dark } = useTheme();
@@ -898,6 +987,13 @@ export default function ManagerCreateCreative() {
   const adId = location.state?.adId || null;
   const adFinalAsset = location.state?.finalAsset || null;
   const adLanguageAssets = location.state?.languageAssets || [];
+  // Extract session ID from URL path (e.g., /manager/create-creative/123)
+  const urlSessionId = (() => {
+    const parts = location.pathname.split('/');
+    const last = parts[parts.length - 1];
+    if (/^\d+$/.test(last)) return parseInt(last, 10);
+    return null;
+  })();
   const [mediaType, setMediaType] = useState(campaignMediaType);
   const [selectedLanguage, setSelectedLanguage] = useState(null);
   // Build prompt from base description + selected language
@@ -911,6 +1007,73 @@ export default function ManagerCreateCreative() {
   );
   const [style, setStyle] = useState(null);
   const [duration, setDuration] = useState(8);
+  // Image input state for video generation
+  const [inputImageUpload, setInputImageUpload] = useState(null); // { base64, mimeType, source: 'upload'|'generated', previewUrl? }
+  const [inputImageTab, setInputImageTab] = useState('upload'); // 'upload' | 'generated'
+  const [audioEnabled, setAudioEnabled] = useState(true);
+  const [showInputImage, setShowInputImage] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const handleImageFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('image/')) {
+      setError('Please select a valid image file');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const base64 = ev.target.result;
+      setInputImageUpload({ base64, mimeType: file.type, source: 'upload', fileName: file.name });
+      setReferenceImage(null); // clear any existing reference
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSelectGeneratedImage = (asset) => {
+    // Convert the generated image URL to base64 for use as input_image
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      const base64 = canvas.toDataURL('image/png');
+      setInputImageUpload({ base64, mimeType: 'image/png', source: 'generated', previewUrl: asset.url });
+      setReferenceImage(null);
+    };
+    img.onerror = () => {
+      // Fallback: fetch the image and convert to blob/base64
+      fetch(asset.url)
+        .then(r => r.blob())
+        .then(blob => {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            setInputImageUpload({ base64: ev.target.result, mimeType: 'image/png', source: 'generated', previewUrl: asset.url });
+          };
+          reader.readAsDataURL(blob);
+        })
+        .catch(() => {
+          // If all fails, try direct URL approach
+          setInputImageUpload({ base64: asset.url, mimeType: 'image/png', source: 'generated', previewUrl: asset.url, isUrl: true });
+        });
+    };
+    img.src = asset.url;
+  };
+
+  const handleClearInputImage = () => {
+    setInputImageUpload(null);
+    setReferenceImage(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Get credit cost for a given model ID
+  const getCreditCost = (modelId) => {
+    const allModels = [...imageModels, ...videoModels];
+    const model = allModels.find(m => m.id === modelId);
+    return model?.credit_cost || 0;
+  };
+
   const formatTimestamp = (seconds) => {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
@@ -953,6 +1116,8 @@ export default function ManagerCreateCreative() {
   const [selectedVideoModel, setSelectedVideoModel] = useState(VIDEO_MODELS_DEFAULT[0].id);
   // Google API daily usage quota (real credits)
   const [googleApiQuota, setGoogleApiQuota] = useState(null);
+  // Monthly credit usage stats
+  const [monthlyCreditStats, setMonthlyCreditStats] = useState(null);
   // Manager's own API key
   const [showApiSettings, setShowApiSettings] = useState(false);
   const [myApiKey, setMyApiKey] = useState('');
@@ -963,8 +1128,10 @@ export default function ManagerCreateCreative() {
   const [sessions, setSessions] = useState([]);
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [savingSession, setSavingSession] = useState(false);
+  const [lightboxAsset, setLightboxAsset] = useState(null);
   const saveTimerRef = useRef(null);
   const loadingSessionRef = useRef(false);
+  const campaignAdIdRef = useRef(null);
 
   // Fetch models and Google API usage stats on mount
   useEffect(() => {
@@ -973,6 +1140,7 @@ export default function ManagerCreateCreative() {
     fetchMyApiKey();
     fetchSessions();
     fetchRecentMedia();
+    fetchMonthlyCreditStats();
   }, []);
 
   // Auto-save session when prompt or settings change (debounced)
@@ -985,15 +1153,39 @@ export default function ManagerCreateCreative() {
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [prompt, width, height, duration, style, mediaType, selectedImageModel, selectedVideoModel, currentSessionId]);
 
+  // Watch for URL-based session navigation (handles browser back/forward, not sidebar clicks)
+  useEffect(() => {
+    if (!urlSessionId) return;
+    // Skip if this session is already loaded (e.g., handleSelectSession already loaded it)
+    if (currentSessionId === urlSessionId) return;
+    const doLoad = async () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      await saveCurrentSession();
+      campaignAdIdRef.current = null;
+      setInputImageUpload(null);
+      setReferenceImage(null);
+      setGeneratedAssets([]);
+      setSelectedAsset(null);
+      await loadSession(urlSessionId);
+    };
+    doLoad();
+  }, [location.pathname]);
+
   const saveCurrentSession = async () => {
     if (!currentSessionId) return;
     setSavingSession(true);
     try {
+      // For campaign sessions, preserve the Campaign #N prefix in the title
+      const titleToSave = prompt
+        ? (campaignAdIdRef.current
+            ? `Campaign #${campaignAdIdRef.current} - ${prompt.slice(0, 60)}`.slice(0, 80)
+            : prompt.slice(0, 80))
+        : undefined;
       await creativeSessions.update(currentSessionId, {
-        title: prompt ? prompt.slice(0, 80) : undefined,
+        title: titleToSave,
         media_type: mediaType,
         current_prompt: prompt,
-        settings: { width, height, duration, style, mediaType, model: selectedModel },
+        settings: { width, height, duration, style, mediaType, model: selectedModel, ...(campaignAdIdRef.current ? { adId: campaignAdIdRef.current } : {}) },
       });
     } catch (err) {
       // Ignore
@@ -1003,11 +1195,46 @@ export default function ManagerCreateCreative() {
   };
 
   const fetchSessions = async () => {
+    if (_fetchingSessions) return; // Prevent double-creation in Strict Mode (uses module-level var to survive remounts)
+    _fetchingSessions = true;
     try {
       const data = await creativeSessions.list();
       setSessions(data || []);
-      // Auto-create a new session if none exists
-      if (!data || data.length === 0) {
+
+      // If URL has a session ID, load that session directly
+      if (urlSessionId) {
+        const sessionExists = (data || []).some(s => s.id === urlSessionId);
+        if (sessionExists) {
+          await loadSession(urlSessionId);
+          return;
+        }
+      }
+
+      // When coming from a campaign (adId is set), create a dedicated session for it
+      if (adId) {
+        // Check if there's already a session for this campaign (via settings.adId)
+        const existing = (data || []).find(s => s.settings?.adId === adId);
+        if (existing) {
+          campaignAdIdRef.current = adId;
+          await loadSession(existing.id);
+          // Navigate to session URL
+          navigate(`/manager/create-creative/${existing.id}`, { replace: true });
+        } else {
+          const campaignTitle = prompt ? prompt.slice(0, 50) : 'Campaign';
+          campaignAdIdRef.current = adId;
+          const newSession = await creativeSessions.create({
+            title: `Campaign #${adId} - ${campaignTitle}`.slice(0, 80),
+            media_type: campaignMediaType,
+            current_prompt: prompt,
+            settings: { width, height, duration, style, mediaType, model: selectedModel, adId },
+          });
+          setSessions(prev => [newSession, ...(prev || [])]);
+          setCurrentSessionId(newSession.id);
+          // Navigate to session URL
+          navigate(`/manager/create-creative/${newSession.id}`, { replace: true });
+        }
+      } else if (!data || data.length === 0) {
+        // No sessions exist - create a new one
         const newSession = await creativeSessions.create({
           title: prompt ? prompt.slice(0, 80) : 'New Session',
           media_type: mediaType,
@@ -1016,17 +1243,25 @@ export default function ManagerCreateCreative() {
         });
         setSessions([newSession]);
         setCurrentSessionId(newSession.id);
+        // Navigate to session URL
+        navigate(`/manager/create-creative/${newSession.id}`, { replace: true });
       } else {
-        // Load the most recent session (loadSession sets currentSessionId)
+        // Load the most recent session
         await loadSession(data[0].id);
+        // Navigate to session URL
+        navigate(`/manager/create-creative/${data[0].id}`, { replace: true });
       }
     } catch (err) {
       // Ignore
+    } finally {
+      _fetchingSessions = false;
     }
   };
 
   const loadSession = async (sessionId) => {
     loadingSessionRef.current = true;
+    setGeneratedAssets([]);
+    setSelectedAsset(null);
     try {
       const session = await creativeSessions.get(sessionId);
       setCurrentSessionId(session.id);
@@ -1042,6 +1277,8 @@ export default function ManagerCreateCreative() {
           else setSelectedVideoModel(s.model);
         }
       }
+      // Restore campaign association from session settings
+      campaignAdIdRef.current = session.settings?.adId || null;
       if (session.current_prompt) setPrompt(session.current_prompt);
       // Load generated assets from session events
       if (session.events?.length) {
@@ -1072,6 +1309,7 @@ export default function ManagerCreateCreative() {
 
   const handleNewSession = async () => {
     try {
+      campaignAdIdRef.current = null;
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       await saveCurrentSession();
       const newSession = await creativeSessions.create({
@@ -1082,40 +1320,52 @@ export default function ManagerCreateCreative() {
       });
       setSessions(prev => [newSession, ...prev]);
       setCurrentSessionId(newSession.id);
+      setInputImageUpload(null);
       setPrompt('');
       setGeneratedAssets([]);
       setSelectedAsset(null);
+      // Navigate to the new session URL
+      navigate(`/manager/create-creative/${newSession.id}`, { replace: true });
     } catch (err) {
       // Ignore
+    } finally {
     }
   };
 
   const handleDeleteSession = async (sessionId) => {
+    const session = sessions.find(s => s.id === sessionId);
+    const sessionTitle = session?.title || 'Untitled';
+    if (!window.confirm(`Delete "${sessionTitle}"? This cannot be undone.`)) return;
     try {
       await creativeSessions.delete(sessionId);
       setSessions(prev => prev.filter(s => s.id !== sessionId));
       if (currentSessionId === sessionId) {
         const remaining = sessions.filter(s => s.id !== sessionId);
         if (remaining.length > 0) {
-          await loadSession(remaining[0].id);
+          navigate(`/manager/create-creative/${remaining[0].id}`, { replace: true });
         } else {
           handleNewSession();
         }
       }
     } catch (err) {
       // Ignore
+    } finally {
     }
   };
 
   const handleSelectSession = async (sessionId) => {
     if (sessionId === currentSessionId) return;
-    // Save current session before switching
+    // Save current session first, then load the new one directly
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     await saveCurrentSession();
+    campaignAdIdRef.current = null;
+    setInputImageUpload(null);
     setReferenceImage(null);
     setGeneratedAssets([]);
     setSelectedAsset(null);
     await loadSession(sessionId);
+    // Update URL to match the active session
+    navigate(`/manager/create-creative/${sessionId}`, { replace: true });
   };
 
   const fetchRecentMedia = async () => {
@@ -1124,6 +1374,7 @@ export default function ManagerCreateCreative() {
       if (data) setRecentMedia(data);
     } catch (err) {
       // Ignore
+    } finally {
     }
   };
 
@@ -1136,12 +1387,22 @@ export default function ManagerCreateCreative() {
     }
   };
 
+  const fetchMonthlyCreditStats = async () => {
+    try {
+      const data = await creditUsage.monthlyStats();
+      if (data) setMonthlyCreditStats(data);
+    } catch (err) {
+      // Ignore if API unavailable
+    }
+  };
+
   const fetchMyApiKey = async () => {
     try {
       const data = await managerSettings.getApiKey();
       if (data?.api_key) setMyApiKey(data.api_key);
     } catch (err) {
       // Ignore
+    } finally {
     }
   };
 
@@ -1218,6 +1479,14 @@ export default function ManagerCreateCreative() {
     }
   };
 
+  // Filter only image assets for the image picker
+  const generatedImageAssets = generatedAssets.filter(a => a.type === 'image');
+
+  // Total estimated credits from all generated assets in this session
+  const totalEstimatedCredits = generatedAssets.reduce((sum, asset) => {
+    return sum + getCreditCost(asset.model);
+  }, 0);
+
   const handleNewTemplate = (preset) => {
     setWidth(preset.w);
     setHeight(preset.h);
@@ -1259,6 +1528,13 @@ export default function ManagerCreateCreative() {
         setGeneratedAssets(prev => [...prev, newAsset]);
         setSelectedAsset(newAsset);
         fetchUsageStats();
+        creditUsage.log({
+          model_id: selectedImageModel,
+          credit_cost: getCreditCost(selectedImageModel),
+          media_type: 'image',
+          generated_media: result.generated_media_id || null,
+        }).catch(() => {});
+        fetchMonthlyCreditStats();
         if (sessionId && result.generated_media_id) {
           creativeSessions.addEvent(sessionId, {
             event_type: 'generate',
@@ -1269,8 +1545,11 @@ export default function ManagerCreateCreative() {
         }
       } else {
         const perClipDuration = duration > 8 ? 8 : [4, 6, 8].reduce((a, b) => Math.abs(b - duration) < Math.abs(a - duration) ? b : a);
+        const effectivePrompt = !audioEnabled
+          ? `Silent video, no audio, no speech, no voiceover. ${prompt.trim()}`
+          : prompt.trim();
         const generatePayload = {
-          prompt: prompt.trim(),
+          prompt: effectivePrompt,
           aspect_ratio: aspectRatio,
           duration_seconds: perClipDuration,
           target_duration_seconds: duration,
@@ -1278,6 +1557,8 @@ export default function ManagerCreateCreative() {
         };
         if (referenceImage) {
           generatePayload.input_image = referenceImage.base64;
+        } else if (inputImageUpload?.base64) {
+          generatePayload.input_image = inputImageUpload.base64;
         }
         const result = await ads.generateVideoClip(generatePayload);
         const newAsset = {
@@ -1289,6 +1570,13 @@ export default function ManagerCreateCreative() {
         setGeneratedAssets(prev => [...prev, newAsset]);
         setSelectedAsset(newAsset);
         fetchUsageStats();
+        creditUsage.log({
+          model_id: selectedVideoModel,
+          credit_cost: getCreditCost(selectedVideoModel),
+          media_type: 'video',
+          generated_media: result.generated_media_id || null,
+        }).catch(() => {});
+        fetchMonthlyCreditStats();
         if (sessionId && result.generated_media_id) {
           creativeSessions.addEvent(sessionId, {
             event_type: 'generate',
@@ -1311,19 +1599,44 @@ export default function ManagerCreateCreative() {
   };
 
   const [publishing, setPublishing] = useState(false);
+  const [videoLanguageMap, setVideoLanguageMap] = useState({}); // { assetId: languageId }
 
   const handlePublishToCampaign = async () => {
     if (!adId || generatedAssets.length === 0) return;
-    const assetIds = generatedAssets.map(a => a.mediaId).filter(Boolean);
-    if (assetIds.length === 0) {
+    // Exclude language-assigned videos from the main asset_ids
+    const assignedMediaIds = new Set(
+      Object.keys(videoLanguageMap).map(k => parseInt(k, 10)).filter(Boolean)
+    );
+    const assetIds = generatedAssets
+      .map(a => a.mediaId)
+      .filter(Boolean)
+      .filter(mId => !assignedMediaIds.has(mId));
+    if (assetIds.length === 0 && Object.keys(videoLanguageMap).length === 0) {
       setError('No saved media found. Please generate new assets in this session.');
       return;
     }
+    // Collect language-specific assignments
+    const languageAssets = [];
+    for (const [assetIdStr, langId] of Object.entries(videoLanguageMap)) {
+      const mediaId = parseInt(assetIdStr, 10);
+      const asset = generatedAssets.find(a => a.mediaId === mediaId || a.id === mediaId);
+      if (asset && langId) {
+        languageAssets.push({
+          language_id: langId,
+          generated_media_id: mediaId,
+          prompt: asset.prompt || '',
+        });
+      }
+    }
     setPublishing(true);
     try {
-      await ads.saveGeneratedAssets(adId, { asset_ids: assetIds });
+      await ads.saveGeneratedAssets(adId, {
+        asset_ids: assetIds,
+        language_assets: languageAssets,
+      });
       setNotification('Published to campaign! Client will be notified.');
       setGeneratedAssets([]);
+      setVideoLanguageMap({});
       setTimeout(() => {
         navigate('/manager/dashboard');
       }, 2000);
@@ -1412,7 +1725,54 @@ export default function ManagerCreateCreative() {
               Back
             </button>
 
-            {/* Google API Quota — only shows REAL data from Google's responses */}
+            {/* Credit Dashboard & Google API Quota */}
+            {/* Monthly Credit Usage — persisted in database */}
+            {monthlyCreditStats && (
+              <div className={`mb-4 rounded-xl border transition-all duration-300 ${
+                dark ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white/90 border-stone-200 shadow-sm'
+              }`}>
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                    dark ? 'bg-amber-500/10' : 'bg-amber-100'
+                  }`}>
+                    <svg className={`w-4 h-4 ${dark ? 'text-amber-400' : 'text-amber-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-xs font-bold ${dark ? 'text-neutral-200' : 'text-neutral-800'}`}>
+                      Monthly Credit Usage — {monthlyCreditStats.month}/{monthlyCreditStats.year}
+                    </div>
+                    <div className={`text-[9px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
+                      {monthlyCreditStats.total_generations} generation{monthlyCreditStats.total_generations !== 1 ? 's' : ''} · {monthlyCreditStats.total_credits} cr total
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 text-right">
+                    <div>
+                      <div className={`text-[9px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>Images</div>
+                      <div className={`text-xs font-bold font-mono ${dark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                        {monthlyCreditStats.image_credits} cr
+                      </div>
+                      <div className={`text-[8px] ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
+                        {monthlyCreditStats.image_generations} gen
+                      </div>
+                    </div>
+                    <div className={`w-px h-8 ${dark ? 'bg-neutral-700' : 'bg-stone-200'}`} />
+                    <div>
+                      <div className={`text-[9px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>Videos</div>
+                      <div className={`text-xs font-bold font-mono ${dark ? 'text-amber-400' : 'text-amber-600'}`}>
+                        {monthlyCreditStats.video_credits} cr
+                      </div>
+                      <div className={`text-[8px] ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
+                        {monthlyCreditStats.video_generations} gen
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Google API Rate Limit — live data from API responses */}
             {googleApiQuota?.exhausted && (
               <div className={`mb-6 rounded-2xl p-4 border ${
                 dark ? 'bg-red-500/10 border-red-500/30' : 'bg-red-50 border-red-300'
@@ -1450,7 +1810,7 @@ export default function ManagerCreateCreative() {
                   </div>
                   <div className="flex-1">
                     <div className={`text-xs font-medium ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>
-                      Google API Quota
+                      Google API Rate Limit
                     </div>
                     <div className={`text-lg font-bold ${
                       (googleApiQuota.google_rate_limit['x-ratelimit-remaining-requests'] || 0) <= 5 ? 'text-amber-500' : dark ? 'text-emerald-300' : 'text-emerald-700'
@@ -1461,14 +1821,12 @@ export default function ManagerCreateCreative() {
                       </span>
                     </div>
                     <div className={`text-[10px] mt-0.5 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
-                      From Google API response — updates after each generation
+                      Real-time rate limit from Google API responses
                     </div>
                   </div>
                 </div>
               </div>
-            )}
-
-            {mode === 'merge' ? (
+            )}            {mode === 'merge' ? (
               /* ─── Video Merger Mode ─── */
               <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 animate-fade-in-up animate-delay-100">
                 <div className="lg:col-span-5">
@@ -1502,9 +1860,16 @@ export default function ManagerCreateCreative() {
                         <h3 className={`text-sm font-bold ${dark ? 'text-neutral-200' : 'text-neutral-800'}`}>
                           Generated Assets
                         </h3>
-                        <span className={`text-[10px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
-                          {generatedAssets.length} {generatedAssets.length === 1 ? 'asset' : 'assets'}
-                        </span>
+                        <div className="flex items-center gap-3">
+                          <span className={`text-[10px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
+                            {generatedAssets.length} {generatedAssets.length === 1 ? 'asset' : 'assets'}
+                          </span>
+                          {totalEstimatedCredits > 0 && (
+                            <span className={`text-[9px] font-mono ${dark ? 'text-amber-400/80' : 'text-amber-600'}`}>
+                              ~{totalEstimatedCredits} cr
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8">
                         {[...generatedAssets].sort((a, b) => (b.created_at || b.id) - (a.created_at || a.id)).map((asset) => (
@@ -1527,6 +1892,16 @@ export default function ManagerCreateCreative() {
                               <img src={asset.url} alt="" className="w-full h-16 object-cover" />
                             )}
                             <div className="flex items-center justify-center gap-0.5 absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setLightboxAsset(asset); }}
+                                className="p-0.5 rounded bg-amber-500/80 text-white hover:bg-amber-500"
+                                title="View full size"
+                              >
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <circle cx="11" cy="11" r="4" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 7v8M7 11h8" />
+                                </svg>
+                              </button>
                               {asset.type === 'video' && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setMode('merge'); }}
@@ -1787,31 +2162,106 @@ export default function ManagerCreateCreative() {
                       ))}
                       {/* Publish to Campaign — only when new AI assets exist */}
                       {generatedAssets.length > 0 && adId && (
-                        <div className="flex justify-end pt-3 border-t border-neutral-800/30">
-                          <button
-                            onClick={handlePublishToCampaign}
-                            disabled={publishing}
-                            className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all disabled:opacity-40 flex items-center gap-2 ${
-                              dark ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border border-emerald-200'
-                            }`}
-                          >
-                            {publishing ? (
-                              <>
-                                <svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                                </svg>
-                                Publishing...
-                              </>
-                            ) : (
-                              <>
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                Publish to Campaign
-                              </>
-                            )}
-                          </button>
+                        <div className="pt-3 border-t border-neutral-800/30 space-y-3">
+                          {/* Language assignment for each video */}
+                          {campaignLanguages.length > 0 && (
+                            <div className="space-y-2">
+                              <p className={`text-[10px] font-medium ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
+                                Assign videos to languages (for multi-language campaigns):
+                              </p>
+                              {generatedAssets
+                                .filter(a => a.mediaId || a.id)
+                                .map(asset => {
+                                  const assetKey = (asset.mediaId || asset.id).toString();
+                                  const assignedLangId = videoLanguageMap[assetKey];
+                                  const assignedLang = assignedLangId
+                                    ? campaignLanguages.find(l => l.id === assignedLangId)
+                                    : null;
+                                  const isAssigned = !!assignedLang;
+                                  return (
+                                    <div key={assetKey}
+                                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${
+                                        isAssigned
+                                          ? dark ? 'bg-purple-500/8 border-purple-500/25' : 'bg-purple-50 border-purple-200'
+                                          : dark ? 'bg-neutral-800/40 border-neutral-700/50' : 'bg-stone-50 border-stone-200'
+                                      }`}
+                                    >
+                                      {asset.type === 'video' ? (
+                                        <video src={asset.url} className="w-10 h-7 rounded object-cover flex-shrink-0" muted />
+                                      ) : (
+                                        <img src={asset.url} alt="" className="w-10 h-7 rounded object-cover flex-shrink-0" />
+                                      )}
+                                      <div className="flex-1 min-w-0">
+                                        <div className={`text-[10px] font-medium truncate ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>
+                                          {asset.prompt?.slice(0, 40) || 'Untitled'}
+                                        </div>
+                                      </div>
+                                      <select
+                                        value={assignedLangId || ''}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          setVideoLanguageMap(prev => {
+                                            const next = { ...prev };
+                                            if (val) next[assetKey] = parseInt(val, 10);
+                                            else delete next[assetKey];
+                                            return next;
+                                          });
+                                        }}
+                                        className={`text-[10px] px-2 py-1.5 rounded-lg outline-none max-w-[120px] ${
+                                          dark ? 'bg-neutral-800 border border-neutral-700 text-neutral-200' : 'bg-white border border-stone-300 text-neutral-900'
+                                        }`}
+                                      >
+                                        <option value="">— Main video —</option>
+                                        {campaignLanguages
+                                          .filter(l => {
+                                            // Don't show languages already assigned to other videos
+                                            const alreadyUsed = Object.entries(videoLanguageMap).find(
+                                              ([k, v]) => v === l.id && k !== assetKey
+                                            );
+                                            return !alreadyUsed;
+                                          })
+                                          .map(l => (
+                                            <option key={l.id} value={l.id}>{l.name}</option>
+                                          ))}
+                                      </select>
+                                      {isAssigned && (
+                                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
+                                          dark ? 'bg-purple-500/10 text-purple-300' : 'bg-purple-100 text-purple-700'
+                                        }`}>
+                                          {assignedLang.name}
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          )}
+                          <div className="flex justify-end">
+                            <button
+                              onClick={handlePublishToCampaign}
+                              disabled={publishing}
+                              className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all disabled:opacity-40 flex items-center gap-2 ${
+                                dark ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border border-emerald-200'
+                              }`}
+                            >
+                              {publishing ? (
+                                <>
+                                  <svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                                  </svg>
+                                  Publishing...
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  Publish to Campaign
+                                </>
+                              )}
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1834,7 +2284,7 @@ export default function ManagerCreateCreative() {
                         }`}
                       >
                         {(mediaType === 'image' ? imageModels : videoModels).map((m) => (
-                          <option key={m.id} value={m.id}>{m.name}</option>
+                          <option key={m.id} value={m.id}>{m.name} ({m.credit_cost} cr){m.is_premium ? ' ★' : ''}</option>
                         ))}
                       </select>
                     </div>
@@ -1923,6 +2373,7 @@ export default function ManagerCreateCreative() {
 
                     {/* Duration (video) or Style (image) */}
                     {mediaType === 'video' ? (
+                      <>
                       <div className="flex items-center gap-1.5">
                         <span className={`text-[10px] font-medium hidden sm:inline ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>Dur</span>
                         <input
@@ -1937,6 +2388,33 @@ export default function ManagerCreateCreative() {
                         />
                         <span className={`text-[10px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>sec (max {videoMaxDuration})</span>
                       </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setAudioEnabled(!audioEnabled)}
+                          className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-all ${
+                            audioEnabled
+                              ? dark
+                                ? 'bg-emerald-500/12 text-emerald-300 border border-emerald-500/25'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : dark
+                                ? 'text-neutral-500 border border-transparent hover:border-neutral-700'
+                                : 'text-stone-400 border border-transparent hover:border-stone-200'
+                          }`}
+                          title={audioEnabled ? 'Video will have audio (speech, sound)' : 'Silent video, no audio'}
+                        >
+                          {audioEnabled ? (
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 9.75L19.5 12m0 0l2.25 2.25M19.5 12l2.25-2.25M19.5 12l-2.25 2.25m-10.5-6l4.72-4.72a.75.75 0 011.28.531v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                            </svg>
+                          )}
+                          <span>{audioEnabled ? 'Audio On' : 'Audio Off'}</span>
+                        </button>
+                      </div>
+                      </>
                     ) : (
                       <div className="flex items-center gap-1 flex-wrap">
                         <span className={`text-[10px] font-medium hidden sm:inline ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>Style</span>
@@ -2004,7 +2482,7 @@ export default function ManagerCreateCreative() {
                         size="sm"
                         className="!px-5 !py-1.5 !text-xs !font-bold !rounded-lg whitespace-nowrap"
                       >
-                        {generating ? 'Generating...' : `Generate ${mediaType === 'image' ? 'Image' : 'Video'}`}
+                        {generating ? 'Generating...' : `Generate ${mediaType === 'image' ? 'Image' : 'Video'} (${getCreditCost(selectedModel)} cr)`}
                       </Button>
                     </div>
                   </div>
@@ -2068,6 +2546,125 @@ export default function ManagerCreateCreative() {
                         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                       </svg>
                     </button>
+                  </div>
+                )}
+
+                {/* --- Image Source (only for video mode) --- */}
+                {mediaType === 'video' && (
+                  <div className={`rounded-xl border mb-4 transition-all duration-300 ${
+                    dark ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white/90 border-stone-200 shadow-sm'
+                  }`}>
+                    <button
+                      onClick={() => setShowInputImage(!showInputImage)}
+                      className={`w-full flex items-center gap-2 px-4 pt-3 pb-3 transition-colors ${
+                        dark ? 'hover:bg-neutral-800/50' : 'hover:bg-stone-50'
+                      }`}
+                    >
+                      <svg className={`w-4 h-4 ${dark ? 'text-amber-400' : 'text-amber-600'} transition-transform duration-200 ${showInputImage ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                      </svg>
+                      <svg className={`w-4 h-4 ${dark ? 'text-amber-400' : 'text-amber-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.41a2.25 2.25 0 013.182 0l2.909 2.91m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                      </svg>
+                      <h4 className={`text-xs font-bold ${dark ? 'text-neutral-200' : 'text-neutral-800'}`}>
+                        Input Image
+                      </h4>
+                      <span className={`text-[9px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
+                        ({inputImageUpload ? 'image selected' : 'optional'})
+                      </span>
+                      {inputImageUpload && (
+                        <span className={`ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                          dark ? 'bg-emerald-500/10 text-emerald-300' : 'bg-emerald-50 text-emerald-700'
+                        }`}>
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          Set
+                        </span>
+                      )}
+                      <svg className={`w-3.5 h-3.5 ml-auto transition-transform duration-200 ${showInputImage ? 'rotate-180' : ''} ${
+                        dark ? 'text-neutral-500' : 'text-stone-400'
+                      }`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                      </svg>
+                    </button>
+                    {showInputImage && (
+                    <div className="px-4 pb-3">
+                      <div className="flex gap-1 mb-3">
+                        <button
+                          onClick={() => setInputImageTab('upload')}
+                          className={`px-2.5 py-1 rounded-lg text-[9px] font-medium transition-all ${inputImageTab === 'upload' ? dark ? 'bg-amber-500/12 text-amber-300' : 'bg-amber-50 text-amber-700' : dark ? 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800' : 'text-stone-400 hover:text-stone-600 hover:bg-stone-100'}`}
+                        >
+                          <svg className="w-3 h-3 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
+                          Upload from Device
+                        </button>
+                        <button
+                          onClick={() => setInputImageTab('generated')}
+                          className={`px-2.5 py-1 rounded-lg text-[9px] font-medium transition-all ${inputImageTab === 'generated' ? dark ? 'bg-amber-500/12 text-amber-300' : 'bg-amber-50 text-amber-700' : dark ? 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800' : 'text-stone-400 hover:text-stone-600 hover:bg-stone-100'}`}
+                        >
+                          <svg className="w-3 h-3 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.41a2.25 2.25 0 013.182 0l2.909 2.91m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>
+                          From Generated Images
+                        </button>
+                      </div>
+                      {inputImageTab === 'upload' ? (
+                        <>
+                          <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleImageFileUpload} className="hidden" />
+                          {!inputImageUpload ? (
+                            <button onClick={() => fileInputRef.current?.click()} className={`w-full p-4 rounded-xl border-2 border-dashed transition-all cursor-pointer ${dark ? 'border-neutral-700 hover:border-amber-500/40 bg-neutral-800/30 hover:bg-neutral-800/50' : 'border-stone-300 hover:border-amber-400 bg-stone-50/50 hover:bg-stone-100'}`}>
+                              <div className="flex flex-col items-center gap-2">
+                                <svg className={`w-8 h-8 ${dark ? 'text-neutral-500' : 'text-stone-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
+                                <span className={`text-xs font-medium ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>Click to upload an image</span>
+                                <span className={`text-[9px] ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>PNG, JPG, WebP</span>
+                              </div>
+                            </button>
+                          ) : (
+                            <div className={`flex items-center gap-3 p-2 rounded-xl border ${dark ? 'bg-neutral-800/60 border-neutral-700' : 'bg-stone-50 border-stone-200'}`}>
+                              <img src={inputImageUpload.source === 'generated' && inputImageUpload.previewUrl ? inputImageUpload.previewUrl : inputImageUpload.base64} alt="" className="w-14 h-14 rounded-lg object-cover flex-shrink-0 border" />
+                              <div className="flex-1 min-w-0">
+                                <div className={`text-[10px] font-medium truncate ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>{inputImageUpload.fileName || 'Selected image'}</div>
+                                <div className={`text-[8px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>Source: {inputImageUpload.source === 'upload' ? 'Device upload' : 'Generated image'}</div>
+                              </div>
+                              <button onClick={() => fileInputRef.current?.click()} className={`px-2 py-1 rounded text-[9px] font-medium transition-colors ${dark ? 'text-amber-400 bg-amber-500/10 hover:bg-amber-500/20' : 'text-amber-700 bg-amber-50 hover:bg-amber-100'}`}>Change</button>
+                              <button
+                                onClick={handleClearInputImage}
+                                className={`px-2 py-1 rounded text-[9px] font-medium transition-colors ${
+                                  dark ? 'text-red-400 bg-red-500/10 hover:bg-red-500/20' : 'text-red-600 bg-red-50 hover:bg-red-100'
+                                }`}
+                              >
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div>
+                          {generatedImageAssets.length === 0 ? (
+                            <div className={`p-4 rounded-xl border-2 border-dashed text-center ${dark ? 'border-neutral-700 bg-neutral-800/30' : 'border-stone-300 bg-stone-50/50'}`}>
+                              <p className={`text-[10px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>No generated images yet. Generate images first.</p>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2 max-h-[180px] overflow-y-auto p-1">
+                              {generatedImageAssets.map((asset) => {
+                                const isSelected = inputImageUpload?.source === 'generated' && inputImageUpload?.previewUrl === asset.url;
+                                return (
+                                  <button key={asset.id} onClick={() => {
+                              if (isSelected) {
+                                handleClearInputImage();
+                              } else {
+                                handleSelectGeneratedImage(asset);
+                              }
+                            }} className={`relative rounded-lg overflow-hidden border-2 transition-all ${isSelected ? 'border-amber-500 ring-1 ring-amber-500/30' : dark ? 'border-neutral-700 hover:border-amber-500/40' : 'border-stone-200 hover:border-amber-400'}`}>
+                                    <img src={asset.url} alt="" className="w-full aspect-[3/2] object-cover" />
+                                    {isSelected && <div className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-amber-500 flex items-center justify-center"><svg className="w-2 h-2 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg></div>}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    )}
                   </div>
                 )}
 
@@ -2184,11 +2781,17 @@ export default function ManagerCreateCreative() {
                       <h3 className={`text-xs font-semibold ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>
                         Generated Assets <span className={`text-[9px] font-normal ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>({generatedAssets.length})</span>
                       </h3>
-                      {adId && (
-                        <button
-                          onClick={handlePublishToCampaign}
-                          disabled={publishing}
-                          className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all disabled:opacity-40 flex items-center gap-1.5 ${
+                      <div className="flex items-center gap-3">
+                        {totalEstimatedCredits > 0 && (
+                          <span className={`text-[9px] font-mono ${dark ? 'text-amber-400/80' : 'text-amber-600'}`}>
+                            ~{totalEstimatedCredits} cr
+                          </span>
+                        )}
+                        {adId && (
+                          <button
+                            onClick={handlePublishToCampaign}
+                            disabled={publishing}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all disabled:opacity-40 flex items-center gap-1.5 ${
                             dark ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border border-emerald-200'
                           }`}
                         >
@@ -2209,7 +2812,8 @@ export default function ManagerCreateCreative() {
                             </>
                           )}
                         </button>
-                      )}
+                        )}
+                      </div>
                     </div>
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
                       {[...generatedAssets].sort((a, b) => (b.created_at || b.id) - (a.created_at || a.id)).map((asset) => (
@@ -2231,6 +2835,11 @@ export default function ManagerCreateCreative() {
                           </div>
                           <div className={`absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20`}>
                             <div className="flex gap-1">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setLightboxAsset(asset); }}
+                                className="w-5 h-5 rounded flex items-center justify-center bg-white/80 text-stone-700 hover:bg-amber-600 hover:text-white text-xs"
+                                title="View full size"
+                              >🔍</button>
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleEditAsset(asset); }}
                                 className="w-5 h-5 rounded flex items-center justify-center bg-white/80 text-stone-700 hover:bg-white text-xs"
@@ -2294,10 +2903,39 @@ export default function ManagerCreateCreative() {
                   )}
                   <div className={`p-2 ${dark ? 'bg-neutral-800' : 'bg-stone-50'}`}>
                     <p className="text-[10px] leading-tight line-clamp-2 mb-1">{item.prompt || 'No prompt'}</p>
-                    <div className="flex items-center gap-2 text-[9px] opacity-60">
+                    <div className="flex items-center gap-2 text-[9px] opacity-60 mb-1.5">
                       <span>{item.model_used}</span>
                       {item.duration_seconds && <span>{item.duration_seconds}s</span>}
                     </div>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          const resp = await fetch(item.file);
+                          const blob = await resp.blob();
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = (item.file.split('/').pop() || 'download-' + item.id).split('?')[0];
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                        } catch {
+                          window.open(item.file, '_self');
+                        }
+                      }}
+                      className={`w-full flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[9px] font-medium transition-all ${
+                        dark
+                          ? 'bg-neutral-700 text-neutral-300 hover:bg-neutral-600 hover:text-white'
+                          : 'bg-stone-200 text-stone-600 hover:bg-stone-300 hover:text-stone-800'
+                      }`}
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                      </svg>
+                      Download
+                    </button>
                   </div>
                 </div>
               ))}
@@ -2305,6 +2943,7 @@ export default function ManagerCreateCreative() {
           </div>
         </div>
       </div>
+      <AssetLightbox asset={lightboxAsset} dark={dark} onClose={() => setLightboxAsset(null)} />
     </AppLayout>
   );
 }

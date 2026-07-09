@@ -47,10 +47,11 @@ export default function ManagerAdDetail() {
   };
 
   const inputState = (assetId) => feedbackInputs[getAssetKey(assetId)] || { comment: '', timestamp: null, loading: false };
-  const setInput = (assetId, patch) => setFeedbackInputs(prev => ({
-    ...prev,
-    [getAssetKey(assetId)]: { ...inputState(assetId), ...patch }
-  }));
+  const setInput = (assetId, patch) => setFeedbackInputs(prev => {
+    const key = getAssetKey(assetId);
+    const current = prev[key] || { comment: '', timestamp: null, loading: false };
+    return { ...prev, [key]: { ...current, ...patch } };
+  });
 
   const handleUpload = async () => {
     if (!uploadFile) return;

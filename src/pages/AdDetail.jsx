@@ -39,6 +39,7 @@ export default function AdDetail() {
   const [sendingRevision, setSendingRevision] = useState(false);
   const [previewVideo, setPreviewVideo] = useState(null);
   const [feedbackInputs, setFeedbackInputs] = useState({});
+  const [pausedStates, setPausedStates] = useState({});
   const getAssetKey = (assetId) => assetId ? `lang_${assetId}` : 'main';
 
   const feedbackList = ad?.video_feedback || [];
@@ -53,10 +54,11 @@ export default function AdDetail() {
   };
 
   const inputState = (assetId) => feedbackInputs[getAssetKey(assetId)] || { comment: '', timestamp: null, loading: false };
-  const setInput = (assetId, patch) => setFeedbackInputs(prev => ({
-    ...prev,
-    [getAssetKey(assetId)]: { ...inputState(assetId), ...patch }
-  }));
+  const setInput = (assetId, patch) => setFeedbackInputs(prev => {
+    const key = getAssetKey(assetId);
+    const current = prev[key] || { comment: '', timestamp: null, loading: false };
+    return { ...prev, [key]: { ...current, ...patch } };
+  });
 
   useEffect(() => {
     if (ad?.final_asset) {
@@ -216,20 +218,22 @@ export default function AdDetail() {
         )}
         {/* Video player */}
         {videoSrc && (
-          <div
-            onClick={() => setPreviewVideo(videoSrc)}
-            className="rounded-lg overflow-hidden border border-amber-500/10 max-w-[200px] mb-3 cursor-pointer group relative"
-          >
-            <video ref={assetId ? setRef : videoRef} src={videoSrc} muted preload="metadata" className="w-full object-cover bg-black/10 aspect-video">
+          <div className="relative rounded-lg overflow-hidden border border-amber-500/10 max-w-lg mx-auto mb-4">
+            <video ref={assetId ? setRef : videoRef} src={videoSrc} controls
+              onPause={() => setPausedStates(prev => ({ ...prev, [key]: true }))}
+              onPlay={() => setPausedStates(prev => ({ ...prev, [key]: false }))}
+              className="w-full max-h-80 object-contain bg-black/10">
               Your browser does not support the video tag.
             </video>
-            <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-all duration-300">
-              <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 shadow-lg">
-                <svg className="w-3.5 h-3.5 text-stone-700 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z" />
+            {pausedStates[key] && (
+              <button type="button" onClick={() => handleCaptureTimestamp(assetId)}
+                className="absolute bottom-16 right-3 p-2 rounded-full bg-amber-500 hover:bg-amber-400 text-white shadow-lg transition-all duration-200 hover:scale-110 active:scale-95 z-10"
+                title="Capture timestamp">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                 </svg>
-              </div>
-            </div>
+              </button>
+            )}
           </div>
         )}
         {/* Comments for this asset */}
