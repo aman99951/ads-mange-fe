@@ -1107,6 +1107,7 @@ export default function ManagerCreateCreative() {
   const [referenceImage, setReferenceImage] = useState(null);
   const [generatedAssets, setGeneratedAssets] = useState([]);
   const [selectedAsset, setSelectedAsset] = useState(null);
+  const [campaignAd, setCampaignAd] = useState(null);
   const [showNegative, setShowNegative] = useState(false);
   const [error, setError] = useState('');
   // Model selection state
@@ -1279,6 +1280,8 @@ export default function ManagerCreateCreative() {
       }
       // Restore campaign association from session settings
       campaignAdIdRef.current = session.settings?.adId || null;
+      // Also update the campaign selector state so publish works
+      setSelectedCampaignId(session.settings?.adId || null);
       if (session.current_prompt) setPrompt(session.current_prompt);
       // Load generated assets from session events
       if (session.events?.length) {
@@ -1286,7 +1289,7 @@ export default function ManagerCreateCreative() {
           .filter(e => (e.event_type === 'generate' || e.event_type === 'merge') && e.file)
           .map(e => ({
             id: e.id,
-            mediaId: e.id,
+            mediaId: e.generated_media || null,
             type: e.event_type === 'merge' ? 'video' : session.media_type,
             url: e.file,
             prompt: e.prompt || '',
@@ -1296,6 +1299,7 @@ export default function ManagerCreateCreative() {
             height: e.settings?.height || null,
             isMerged: e.event_type === 'merge',
             created_at: e.created_at,
+            published: false,
           }));
         setGeneratedAssets(assets);
         if (assets.length > 0) setSelectedAsset(assets[assets.length - 1]);
@@ -1599,28 +1603,77 @@ export default function ManagerCreateCreative() {
   };
 
   const [publishing, setPublishing] = useState(false);
-  const [videoLanguageMap, setVideoLanguageMap] = useState({}); // { assetId: languageId }
+  const [videoLanguageMap, setVideoLanguageMap] = useState({});
+  const [selectedCampaignId, setSelectedCampaignId] = useState(adId || '');
 
-  const handlePublishToCampaign = async () => {
-    if (!adId || generatedAssets.length === 0) return;
-    // Exclude language-assigned videos from the main asset_ids
+  const effectiveAdId = adId || selectedCampaignId || campaignAdIdRef.current;
+
+  // Extract published media IDs from the campaign's final_asset filename (studio_{mediaId}_...)
+  const publishedMediaIdFromAd = (() => {
+    if (!campaignAd?.final_asset) return null;
+    const match = campaignAd.final_asset.match(/studio_(\d+)_/);
+    return match ? parseInt(match[1], 10) : null;
+  })();
+  const publishedLangMediaIds = (() => {
+    if (!campaignAd?.language_assets?.length) return new Set();
+    const ids = new Set();
+    campaignAd.language_assets.forEach(la => {
+      if (la.asset) {
+        const m = la.asset.match(/lang_\d+_(\d+)_/);
+        if (m) ids.add(parseInt(m[1], 10));
+      }
+    });
+    return ids;
+  })();
+  const isAssetPublished = (asset) => {
+    const mid = asset?.mediaId;
+    if (!mid) return false;
+    return mid === publishedMediaIdFromAd || publishedLangMediaIds.has(mid);
+  };
+
+  const fetchCampaignAd = async () => {
+    if (!effectiveAdId) { setCampaignAd(null); return; }
+    try {
+      const data = await ads.get(effectiveAdId);
+      setCampaignAd(data);
+    } catch {}
+  };
+
+  useEffect(() => { fetchCampaignAd(); }, [effectiveAdId]);
+
+  // Derive live feedback from DB (campaignAd.video_feedback) — falls back to location.state
+  const liveVideoFeedback = (() => {
+    const db = campaignAd?.video_feedback;
+    if (db && db.length > 0) return db;
+    return videoFeedback;
+  })();
+  const liveRevisionSummary = (() => {
+    if (campaignAd?.iterations?.length) {
+      const lastClient = [...campaignAd.iterations].filter(i => i.created_by === 'client').pop();
+      if (lastClient?.feedback) return lastClient.feedback;
+    }
+    return revisionSummary;
+  })();
+  const liveFinalAsset = adFinalAsset || campaignAd?.final_asset || null;
+  const liveLanguageAssets = adLanguageAssets.length > 0 ? adLanguageAssets : (campaignAd?.language_assets?.filter(a => a.asset && a.status === 'completed') || []);
+
+  const handlePublishToCampaign = async (assetToPublish) => {
+    const asset = assetToPublish || selectedAsset;
+    if (!effectiveAdId || !asset) return;
+    const mediaId = asset.mediaId;
+    if (!mediaId) {
+      setError('This asset cannot be published. Generate a new asset first.');
+      return;
+    }
+    const assetIds = [mediaId];
+    // Collect language-specific assignments
+    const languageAssets = [];
     const assignedMediaIds = new Set(
       Object.keys(videoLanguageMap).map(k => parseInt(k, 10)).filter(Boolean)
     );
-    const assetIds = generatedAssets
-      .map(a => a.mediaId)
-      .filter(Boolean)
-      .filter(mId => !assignedMediaIds.has(mId));
-    if (assetIds.length === 0 && Object.keys(videoLanguageMap).length === 0) {
-      setError('No saved media found. Please generate new assets in this session.');
-      return;
-    }
-    // Collect language-specific assignments
-    const languageAssets = [];
-    for (const [assetIdStr, langId] of Object.entries(videoLanguageMap)) {
-      const mediaId = parseInt(assetIdStr, 10);
-      const asset = generatedAssets.find(a => a.mediaId === mediaId || a.id === mediaId);
-      if (asset && langId) {
+    if (assignedMediaIds.has(mediaId)) {
+      const langId = videoLanguageMap[mediaId.toString()];
+      if (langId) {
         languageAssets.push({
           language_id: langId,
           generated_media_id: mediaId,
@@ -1630,16 +1683,12 @@ export default function ManagerCreateCreative() {
     }
     setPublishing(true);
     try {
-      await ads.saveGeneratedAssets(adId, {
-        asset_ids: assetIds,
+      await ads.saveGeneratedAssets(effectiveAdId, {
+        asset_ids: assetIds.filter(id => !assignedMediaIds.has(id)),
         language_assets: languageAssets,
       });
       setNotification('Published to campaign! Client will be notified.');
-      setGeneratedAssets([]);
-      setVideoLanguageMap({});
-      setTimeout(() => {
-        navigate('/manager/dashboard');
-      }, 2000);
+      await fetchCampaignAd();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1952,7 +2001,7 @@ export default function ManagerCreateCreative() {
                 )}
 
                 {/* ─── Revision Feedback Panel ─── */}
-                {showRevisionPanel && (videoFeedback.length > 0 || revisionSummary) && (
+                {showRevisionPanel && (liveVideoFeedback.length > 0 || liveRevisionSummary) && (
                   <div className={`mb-4 rounded-xl border-2 overflow-hidden animate-fade-in-up ${
                     dark ? 'bg-amber-500/5 border-amber-500/30' : 'bg-amber-50 border-amber-300'
                   }`}>
@@ -1965,7 +2014,7 @@ export default function ManagerCreateCreative() {
                         </div>
                         <div>
                           <h4 className={`text-xs font-bold ${dark ? 'text-amber-300' : 'text-amber-800'}`}>Revision Request — Client Feedback</h4>
-                          <p className={`text-[10px] ${dark ? 'text-amber-400/70' : 'text-amber-600'}`}>{videoFeedback.length} comment{videoFeedback.length !== 1 ? 's' : ''} — address the feedback below, then generate a new version.</p>
+                          <p className={`text-[10px] ${dark ? 'text-amber-400/70' : 'text-amber-600'}`}>{liveVideoFeedback.length} comment{liveVideoFeedback.length !== 1 ? 's' : ''} — address the feedback below, then generate a new version.</p>
                         </div>
                       </div>
                       <button onClick={() => setShowRevisionPanel(false)}
@@ -1976,7 +2025,7 @@ export default function ManagerCreateCreative() {
                       </button>
                     </div>
                     <div className="px-4 py-3 space-y-2 max-h-60 overflow-y-auto">
-                      {videoFeedback.map((fb, i) => (
+                      {liveVideoFeedback.map((fb, i) => (
                         <div key={fb.id || i} className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg text-xs border ${
                           dark ? 'bg-neutral-800/60 border-neutral-700/50' : 'bg-white border-stone-200'
                         }`}>
@@ -2009,11 +2058,11 @@ export default function ManagerCreateCreative() {
                           </div>
                         </div>
                       ))}
-                      {revisionSummary && (
+                      {liveRevisionSummary && (
                         <div className={`px-3 py-2.5 rounded-lg text-xs border-l-4 ${
                           dark ? 'bg-neutral-800/40 border-amber-500/30 text-neutral-400' : 'bg-amber-50/50 border-amber-400 text-amber-800'
                         }`}>
-                          <span className="font-semibold">Summary: </span>{revisionSummary}
+                          <span className="font-semibold">Summary: </span>{liveRevisionSummary}
                         </div>
                       )}
                     </div>
@@ -2021,7 +2070,7 @@ export default function ManagerCreateCreative() {
                 )}
 
                 {/* ─── Review & Send Back to Client ─── */}
-                {adId && (adFinalAsset || adLanguageAssets.length > 0) && (
+                {(effectiveAdId || adId) && (liveFinalAsset || liveLanguageAssets.length > 0) && (
                   <div className={`mb-4 rounded-xl border overflow-hidden animate-fade-in-up ${
                     dark ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white/90 border-stone-200 shadow-sm'
                   }`}>
@@ -2044,7 +2093,7 @@ export default function ManagerCreateCreative() {
                     </div>
                     <div className="px-4 py-3 space-y-4">
                       {/* Main video */}
-                      {adFinalAsset && (
+                      {liveFinalAsset && (
                         <div className={`rounded-xl border overflow-hidden ${
                           dark ? 'border-neutral-800' : 'border-stone-200'
                         }`}>
@@ -2054,7 +2103,7 @@ export default function ManagerCreateCreative() {
                             <span className={`text-xs font-semibold ${dark ? 'text-neutral-200' : 'text-neutral-800'}`}>Main Video</span>
                             <div className="flex items-center gap-2">
                               <button
-                                onClick={() => handleCaptureReference(adFinalAsset)}
+                                onClick={() => handleCaptureReference(liveFinalAsset)}
                                 className={`px-2 py-0.5 rounded text-[9px] font-medium transition-colors ${
                                   dark ? 'bg-amber-500/10 text-amber-300 hover:bg-amber-500/20' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
                                 }`}
@@ -2064,21 +2113,21 @@ export default function ManagerCreateCreative() {
                               <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono ${
                                 dark ? 'bg-neutral-800 text-neutral-400' : 'bg-stone-100 text-stone-500'
                               }`}>
-                                {adFinalAsset.width}×{adFinalAsset.height}
+                                {liveFinalAsset.width}×{liveFinalAsset.height}
                               </span>
                             </div>
                           </div>
                           <div className="p-3">
                             <video
-                              src={adFinalAsset}
+                              src={liveFinalAsset}
                               controls
                               className="w-full rounded-lg"
                               style={{ maxHeight: 240 }}
                             />
                             {/* Client feedback for main video */}
-                            {videoFeedback.filter(fb => !fb.language_asset).length > 0 && (
+                            {liveVideoFeedback.filter(fb => !fb.language_asset).length > 0 && (
                               <div className="mt-2 space-y-1">
-                                {videoFeedback.filter(fb => !fb.language_asset).map((fb, i) => (
+                                {liveVideoFeedback.filter(fb => !fb.language_asset).map((fb, i) => (
                                   <div key={fb.id || i} className={`flex items-start gap-2 px-2 py-1.5 rounded-lg text-[10px] ${
                                     dark ? 'bg-neutral-800/60' : 'bg-stone-50'
                                   }`}>
@@ -2099,7 +2148,7 @@ export default function ManagerCreateCreative() {
                         </div>
                       )}
                       {/* Language assets */}
-                      {adLanguageAssets.map((la) => (
+                      {liveLanguageAssets.map((la) => (
                         <div key={la.id} className={`rounded-xl border overflow-hidden ${
                           dark ? 'border-neutral-800' : 'border-stone-200'
                         }`}>
@@ -2138,9 +2187,9 @@ export default function ManagerCreateCreative() {
                               style={{ maxHeight: 240 }}
                             />
                             {/* Client feedback for this language asset */}
-                            {videoFeedback.filter(fb => fb.language_asset === la.id).length > 0 && (
+                            {liveVideoFeedback.filter(fb => fb.language_asset === la.id).length > 0 && (
                               <div className="mt-2 space-y-1">
-                                {videoFeedback.filter(fb => fb.language_asset === la.id).map((fb, i) => (
+                                {liveVideoFeedback.filter(fb => fb.language_asset === la.id).map((fb, i) => (
                                   <div key={fb.id || i} className={`flex items-start gap-2 px-2 py-1.5 rounded-lg text-[10px] ${
                                     dark ? 'bg-neutral-800/60' : 'bg-stone-50'
                                   }`}>
@@ -2160,110 +2209,6 @@ export default function ManagerCreateCreative() {
                           </div>
                         </div>
                       ))}
-                      {/* Publish to Campaign — only when new AI assets exist */}
-                      {generatedAssets.length > 0 && adId && (
-                        <div className="pt-3 border-t border-neutral-800/30 space-y-3">
-                          {/* Language assignment for each video */}
-                          {campaignLanguages.length > 0 && (
-                            <div className="space-y-2">
-                              <p className={`text-[10px] font-medium ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
-                                Assign videos to languages (for multi-language campaigns):
-                              </p>
-                              {generatedAssets
-                                .filter(a => a.mediaId || a.id)
-                                .map(asset => {
-                                  const assetKey = (asset.mediaId || asset.id).toString();
-                                  const assignedLangId = videoLanguageMap[assetKey];
-                                  const assignedLang = assignedLangId
-                                    ? campaignLanguages.find(l => l.id === assignedLangId)
-                                    : null;
-                                  const isAssigned = !!assignedLang;
-                                  return (
-                                    <div key={assetKey}
-                                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${
-                                        isAssigned
-                                          ? dark ? 'bg-purple-500/8 border-purple-500/25' : 'bg-purple-50 border-purple-200'
-                                          : dark ? 'bg-neutral-800/40 border-neutral-700/50' : 'bg-stone-50 border-stone-200'
-                                      }`}
-                                    >
-                                      {asset.type === 'video' ? (
-                                        <video src={asset.url} className="w-10 h-7 rounded object-cover flex-shrink-0" muted />
-                                      ) : (
-                                        <img src={asset.url} alt="" className="w-10 h-7 rounded object-cover flex-shrink-0" />
-                                      )}
-                                      <div className="flex-1 min-w-0">
-                                        <div className={`text-[10px] font-medium truncate ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>
-                                          {asset.prompt?.slice(0, 40) || 'Untitled'}
-                                        </div>
-                                      </div>
-                                      <select
-                                        value={assignedLangId || ''}
-                                        onChange={(e) => {
-                                          const val = e.target.value;
-                                          setVideoLanguageMap(prev => {
-                                            const next = { ...prev };
-                                            if (val) next[assetKey] = parseInt(val, 10);
-                                            else delete next[assetKey];
-                                            return next;
-                                          });
-                                        }}
-                                        className={`text-[10px] px-2 py-1.5 rounded-lg outline-none max-w-[120px] ${
-                                          dark ? 'bg-neutral-800 border border-neutral-700 text-neutral-200' : 'bg-white border border-stone-300 text-neutral-900'
-                                        }`}
-                                      >
-                                        <option value="">— Main video —</option>
-                                        {campaignLanguages
-                                          .filter(l => {
-                                            // Don't show languages already assigned to other videos
-                                            const alreadyUsed = Object.entries(videoLanguageMap).find(
-                                              ([k, v]) => v === l.id && k !== assetKey
-                                            );
-                                            return !alreadyUsed;
-                                          })
-                                          .map(l => (
-                                            <option key={l.id} value={l.id}>{l.name}</option>
-                                          ))}
-                                      </select>
-                                      {isAssigned && (
-                                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
-                                          dark ? 'bg-purple-500/10 text-purple-300' : 'bg-purple-100 text-purple-700'
-                                        }`}>
-                                          {assignedLang.name}
-                                        </span>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                            </div>
-                          )}
-                          <div className="flex justify-end">
-                            <button
-                              onClick={handlePublishToCampaign}
-                              disabled={publishing}
-                              className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all disabled:opacity-40 flex items-center gap-2 ${
-                                dark ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border border-emerald-200'
-                              }`}
-                            >
-                              {publishing ? (
-                                <>
-                                  <svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                                  </svg>
-                                  Publishing...
-                                </>
-                              ) : (
-                                <>
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  </svg>
-                                  Publish to Campaign
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </div>
                 )}
@@ -2765,7 +2710,45 @@ export default function ManagerCreateCreative() {
                             {selectedAsset.model || ''}
                             {selectedAsset.duration ? ` · ${selectedAsset.duration}s` : ''}
                           </span>
-                          <button onClick={() => setSelectedAsset(null)} className="text-[9px] font-medium text-red-400 hover:text-red-500">Clear</button>
+                          <div className="flex items-center gap-2">
+                            {effectiveAdId && selectedAsset.mediaId && !isAssetPublished(selectedAsset) && (
+                              <button
+                                onClick={() => handlePublishToCampaign(selectedAsset)}
+                                disabled={publishing}
+                                className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all disabled:opacity-40 flex items-center gap-1.5 ${
+                                  dark ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border border-emerald-200'
+                                }`}
+                              >
+                                {publishing ? (
+                                  <>
+                                    <svg className="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                                    </svg>
+                                    Publishing...
+                                  </>
+                                ) : (
+                                  <>
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    Publish to Campaign
+                                  </>
+                                )}
+                              </button>
+                            )}
+                            {effectiveAdId && selectedAsset.mediaId && isAssetPublished(selectedAsset) && (
+                              <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 ${
+                                dark ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                              }`}>
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                Published
+                              </span>
+                            )}
+                            <button onClick={() => setSelectedAsset(null)} className="text-[9px] font-medium text-red-400 hover:text-red-500">Clear</button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -2786,32 +2769,6 @@ export default function ManagerCreateCreative() {
                           <span className={`text-[9px] font-mono ${dark ? 'text-amber-400/80' : 'text-amber-600'}`}>
                             ~{totalEstimatedCredits} cr
                           </span>
-                        )}
-                        {adId && (
-                          <button
-                            onClick={handlePublishToCampaign}
-                            disabled={publishing}
-                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all disabled:opacity-40 flex items-center gap-1.5 ${
-                            dark ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border border-emerald-200'
-                          }`}
-                        >
-                          {publishing ? (
-                            <>
-                              <svg className="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                              </svg>
-                              Saving...
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              Save to Campaign
-                            </>
-                          )}
-                        </button>
                         )}
                       </div>
                     </div>
@@ -2864,6 +2821,13 @@ export default function ManagerCreateCreative() {
                               <div className="text-[8px] opacity-90">{new Date(asset.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })} {new Date(asset.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                             )}
                           </div>
+                          {asset.mediaId && isAssetPublished(asset) && (
+                            <div className={`absolute top-0.5 left-0.5 px-1 py-0.5 rounded text-[7px] font-bold ${
+                              dark ? 'bg-emerald-500/30 text-emerald-300' : 'bg-emerald-100 text-emerald-700'
+                            }`}>
+                              ✓ Published
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>

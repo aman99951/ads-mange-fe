@@ -257,8 +257,16 @@ export default function ApiTracker() {
                   <div className="min-w-0">
                     <ModelBadge modelId={log.model_id} />
                     {log.credit_cost != null && log.credit_cost > 0 && (
-                      <span className="block text-[10px] mt-0.5 font-mono">
-                        {log.credit_cost} credit{log.credit_cost !== 1 ? 's' : ''}
+                      <span className="block text-[10px] mt-0.5 font-mono text-amber-600 dark:text-amber-400">
+                        {log.credit_cost} credit{log.credit_cost !== 1 ? 's' : ''} consumed
+                      </span>
+                    )}
+                    {log.credit_cost != null && log.credit_cost === 0 && (
+                      <span className="flex items-center gap-1 mt-0.5">
+                        <svg className="w-3 h-3 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400">No charge</span>
                       </span>
                     )}
                     {cat === 'billed_failed' && (
@@ -269,13 +277,26 @@ export default function ApiTracker() {
 
                 {/* Credits */}
                 <div className="flex items-center">
-                  <span className={`px-2.5 py-1 rounded text-[11px] font-semibold whitespace-nowrap font-mono ${
-                    log.credit_cost > 0
-                      ? (dark ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20' : 'bg-amber-50 text-amber-700 border border-amber-200')
-                      : (dark ? 'text-neutral-500 border border-transparent' : 'text-stone-400 border border-transparent')
-                  }`}>
-                    {log.credit_cost != null ? `${log.credit_cost} cr` : '—'}
-                  </span>
+                  {log.credit_cost != null && log.credit_cost > 0 ? (
+                    <span className={`px-2.5 py-1 rounded text-[11px] font-semibold whitespace-nowrap font-mono ${
+                      dark ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20' : 'bg-amber-50 text-amber-700 border border-amber-200'
+                    }`}>
+                      {log.credit_cost} cr
+                    </span>
+                  ) : log.credit_cost === 0 ? (
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-medium whitespace-nowrap ${
+                      dark ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    }`}>
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Free
+                    </span>
+                  ) : (
+                    <span className={`px-2.5 py-1 rounded text-[11px] font-mono ${
+                      dark ? 'text-neutral-600' : 'text-stone-400'
+                    }`}>—</span>
+                  )}
                 </div>
 
                 {/* Status badge */}
@@ -408,6 +429,10 @@ export default function ApiTracker() {
             <strong>Note:</strong> "Billed" means Google accepted the request (HTTP 200) – you paid.
             "Free" means the request was rejected before processing – no charge.
             Polling requests are GET status checks and are always free.
+          </p>
+          <p className="mt-1.5 text-emerald-600 dark:text-emerald-400">
+            <strong>✓</strong> Entries marked with a green "Free" badge and "No charge" are delivery confirmations —
+            no additional credits were deducted for that request.
           </p>
         </div>
       </div>
