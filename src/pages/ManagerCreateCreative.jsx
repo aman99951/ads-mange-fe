@@ -41,10 +41,10 @@ function toAspectRatio(w, h) {
   return entries[0].key;
 }
 
-const VEO_SUPPORTED_RATIOS = new Set(['16:9', '9:16', '3:4', '4:3']);
+const VEO_SUPPORTED_RATIOS = new Set(['16:9', '9:16']);
 function clampVideoAspectRatio(aspectRatio) {
   if (VEO_SUPPORTED_RATIOS.has(aspectRatio)) return aspectRatio;
-  const ratioMap = { '1:1': '4:3', '3:2': '16:9', '2:3': '9:16' };
+  const ratioMap = { '1:1': '16:9', '4:3': '16:9', '3:4': '9:16', '3:2': '16:9', '2:3': '9:16' };
   return ratioMap[aspectRatio] || '16:9';
 }
 
