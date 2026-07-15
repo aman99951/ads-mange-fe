@@ -1654,8 +1654,10 @@ export default function ManagerCreateCreative() {
           }).catch(() => {});
         }
       } else {
-        const hasBothFrames = lastFrameImage?.base64 && (inputImageUpload?.base64 || referenceImage);
-        const perClipDuration = hasBothFrames ? 8 : (duration > 8 ? 8 : [4, 6, 8].reduce((a, b) => Math.abs(b - duration) < Math.abs(a - duration) ? b : a));
+        const hasStartFrame = !!(inputImageUpload?.base64 || referenceImage);
+        const hasEndFrame = !!lastFrameImage?.base64;
+        const hasBothFrames = hasEndFrame && hasStartFrame;
+        const perClipDuration = hasEndFrame ? 8 : (duration > 8 ? 8 : [4, 6, 8].reduce((a, b) => Math.abs(b - duration) < Math.abs(a - duration) ? b : a));
         let effectivePrompt;
         if (editingAsset && referenceImage) {
           const originalContext = editingAsset.prompt
@@ -1671,7 +1673,7 @@ export default function ManagerCreateCreative() {
           prompt: effectivePrompt,
           aspect_ratio: clampVideoAspectRatio(aspectRatio),
           duration_seconds: perClipDuration,
-          target_duration_seconds: hasBothFrames ? 8 : duration,
+          target_duration_seconds: hasEndFrame ? 8 : duration,
           model: selectedVideoModel,
         };
         if (inputImageUpload?.base64) {
