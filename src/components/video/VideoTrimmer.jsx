@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { proxyMediaUrl } from '../../constants';
 
 /* ───────── Video Trimmer Component ─────────
    Provides a trim bar with two draggable handles (start & end)
@@ -179,7 +180,7 @@ export default function VideoTrimmer({
         <div className={`rounded-xl overflow-hidden mb-3 ${dark ? 'bg-black' : 'bg-black'}`} style={{ aspectRatio: '16/9', maxHeight: 200 }}>
           <video
             ref={videoRef}
-            src={videoUrl}
+            src={proxyMediaUrl(videoUrl)}
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={(e) => {
               setVideoMetaLoaded(true);

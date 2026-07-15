@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { colors } from '../config/theme';
+import { API_BASE, proxyMediaUrl } from '../constants';
 import { ads, managerSettings, creativeSessions, creditUsage } from '../services/api';
 import AppLayout from '../components/layout/AppLayout';
 import ErrorAlert from '../components/layout/ErrorAlert';
@@ -38,6 +39,13 @@ function toAspectRatio(w, h) {
   });
   entries.sort((a, b) => a.diff - b.diff);
   return entries[0].key;
+}
+
+const VEO_SUPPORTED_RATIOS = new Set(['16:9', '9:16', '3:4', '4:3']);
+function clampVideoAspectRatio(aspectRatio) {
+  if (VEO_SUPPORTED_RATIOS.has(aspectRatio)) return aspectRatio;
+  const ratioMap = { '1:1': '4:3', '3:2': '16:9', '2:3': '9:16' };
+  return ratioMap[aspectRatio] || '16:9';
 }
 
 const DIMENSION_PRESETS = [
@@ -202,7 +210,7 @@ async function mergeVideosClientSide(clips, outputW, outputH, fps = 30, onProgre
     v.style.width = '1px';
     v.style.height = '1px';
     document.body.appendChild(v);
-    v.src = clip.url;
+    v.src = proxyMediaUrl(clip.url);
     v.onerror = () => reject(new Error(`Failed to load video ${i + 1}`));
     v.addEventListener('loadedmetadata', () => resolve(v), { once: true });
     setTimeout(() => reject(new Error(`Timeout loading video ${i + 1}`)), 15000);
@@ -236,7 +244,7 @@ async function mergeVideosClientSide(clips, outputW, outputH, fps = 30, onProgre
     audioDest = audioCtx.createMediaStreamDestination();
     const audioBuffers = await Promise.all(clips.map(async (clip) => {
       try {
-        const resp = await fetch(clip.url);
+        const resp = await fetch(proxyMediaUrl(clip.url));
         return await audioCtx.decodeAudioData(await resp.arrayBuffer());
       } catch { return null; }
     }));
@@ -573,7 +581,7 @@ function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError,
   const openTrimmer = (index) => {
     const clip = timeline[index];
     setTrimmingClipIndex(index);
-    setTrimmingVideoUrl(clip.url);
+    setTrimmingVideoUrl(proxyMediaUrl(clip.url));
     setTrimmingDuration(clip.duration || 0);
     setTrimmingInitialStart(clip.trimStart || 0);
     setTrimmingInitialEnd(clip.trimEnd || 0);
@@ -745,7 +753,7 @@ function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError,
                   <div key={v.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg ${
                     dark ? 'hover:bg-neutral-700/50' : 'hover:bg-stone-100'
                   }`}>
-                    <video src={v.url} className="w-10 h-7 rounded object-cover flex-shrink-0" muted />
+                    <video src={proxyMediaUrl(v.url)} className="w-10 h-7 rounded object-cover flex-shrink-0" muted />
                     <span className={`flex-1 truncate text-[10px] ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>
                       {v.prompt?.slice(0, 30)}...
                     </span>
@@ -799,7 +807,7 @@ function VideoMergerPanel({ dark, generatedAssets, setGeneratedAssets, setError,
                   }`}>
                     {index + 1}
                   </span>
-                  <video src={clip.url} className="w-12 h-8 rounded object-cover flex-shrink-0" muted />
+                  <video src={proxyMediaUrl(clip.url)} className="w-12 h-8 rounded object-cover flex-shrink-0" muted />
                   <div className="flex-1 min-w-0">
                     <div className={`text-[10px] font-medium truncate ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>
                       {clip.prompt?.slice(0, 35) || 'Video clip'}
@@ -1009,9 +1017,11 @@ export default function ManagerCreateCreative() {
   const [duration, setDuration] = useState(8);
   // Image input state for video generation
   const [inputImageUpload, setInputImageUpload] = useState(null); // { base64, mimeType, source: 'upload'|'generated', previewUrl? }
+  const [lastFrameImage, setLastFrameImage] = useState(null); // { base64, mimeType, source: 'upload'|'generated', fileName? }
   const [inputImageTab, setInputImageTab] = useState('upload'); // 'upload' | 'generated'
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [showInputImage, setShowInputImage] = useState(false);
+  const [showEndFrame, setShowEndFrame] = useState(false);
   const fileInputRef = useRef(null);
 
   const handleImageFileUpload = (e) => {
@@ -1023,47 +1033,109 @@ export default function ManagerCreateCreative() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const base64 = ev.target.result;
-      setInputImageUpload({ base64, mimeType: file.type, source: 'upload', fileName: file.name });
-      setReferenceImage(null); // clear any existing reference
+      compressImage(base64, 1024).then((compressed) => {
+        setInputImageUpload({ base64: compressed, mimeType: 'image/jpeg', source: 'upload', fileName: file.name });
+      });
     };
     reader.readAsDataURL(file);
   };
 
-  const handleSelectGeneratedImage = (asset) => {
-    // Convert the generated image URL to base64 for use as input_image
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      canvas.getContext('2d').drawImage(img, 0, 0);
-      const base64 = canvas.toDataURL('image/png');
-      setInputImageUpload({ base64, mimeType: 'image/png', source: 'generated', previewUrl: asset.url });
-      setReferenceImage(null);
-    };
-    img.onerror = () => {
-      // Fallback: fetch the image and convert to blob/base64
-      fetch(asset.url)
-        .then(r => r.blob())
-        .then(blob => {
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-            setInputImageUpload({ base64: ev.target.result, mimeType: 'image/png', source: 'generated', previewUrl: asset.url });
-          };
-          reader.readAsDataURL(blob);
-        })
-        .catch(() => {
-          // If all fails, try direct URL approach
-          setInputImageUpload({ base64: asset.url, mimeType: 'image/png', source: 'generated', previewUrl: asset.url, isUrl: true });
+  const lastFrameFileRef = useRef(null);
+  const handleLastFrameUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('image/')) {
+      setError('Please select a valid image file for end frame');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const base64 = ev.target.result;
+        compressImage(base64, 1024).then((compressed) => {
+          setLastFrameImage({ base64: compressed, mimeType: 'image/jpeg', source: 'upload', fileName: file.name });
+          setShowEndFrame(true);
         });
     };
-    img.src = asset.url;
+    reader.readAsDataURL(file);
+  };
+
+  const handleLastFrameSelectGenerated = async (asset) => {
+    try {
+      const result = await ads.proxyImage(asset.url);
+      setLastFrameImage({ base64: result.data_url, mimeType: result.mime_type, source: 'generated', previewUrl: asset.url });
+      setShowEndFrame(true);
+    } catch {
+      try {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        const dataUrl = await new Promise((resolve, reject) => {
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            canvas.getContext('2d').drawImage(img, 0, 0);
+            resolve(canvas.toDataURL('image/png'));
+          };
+          img.onerror = () => reject(new Error('Image load failed'));
+          img.src = proxyMediaUrl(asset.url);
+        });
+        setLastFrameImage({ base64: dataUrl, mimeType: 'image/png', source: 'generated', previewUrl: asset.url });
+        setShowEndFrame(true);
+      } catch {
+        setError('Could not load the end frame image.');
+      }
+    }
+  };
+
+  const compressImage = (dataUrl, maxDim) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.naturalWidth, h = img.naturalHeight;
+        if (w <= maxDim && h <= maxDim) { resolve(dataUrl); return; }
+        if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+        else { w = Math.round(w * maxDim / h); h = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  };
+
+  const handleSelectGeneratedImage = async (asset) => {
+    // Use backend proxy to fetch image server-side (bypasses CORS)
+    try {
+      const result = await ads.proxyImage(asset.url);
+      setInputImageUpload({ base64: result.data_url, mimeType: result.mime_type, source: 'generated', previewUrl: asset.url });
+      return;
+    } catch {
+      // Proxy failed — try canvas fallback (same-origin or CORS-enabled)
+      try {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        const dataUrl = await new Promise((resolve, reject) => {
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            canvas.getContext('2d').drawImage(img, 0, 0);
+            resolve(canvas.toDataURL('image/png'));
+          };
+          img.onerror = () => reject(new Error('Image load failed'));
+          img.src = proxyMediaUrl(asset.url);
+        });
+        setInputImageUpload({ base64: dataUrl, mimeType: 'image/png', source: 'generated', previewUrl: asset.url });
+        return;
+      } catch {
+        setError('Could not load the image for video generation. Please download it and re-upload manually.');
+      }
+    }
   };
 
   const handleClearInputImage = () => {
     setInputImageUpload(null);
-    setReferenceImage(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -1079,12 +1151,36 @@ export default function ManagerCreateCreative() {
     const s = Math.floor(seconds % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
-  const handleCaptureReference = (videoUrl) => {
+  const handleCaptureReference = (mediaUrl, mediaType) => {
+    const url = proxyMediaUrl(mediaUrl);
+
+    if (mediaType === 'image') {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        const base64 = canvas.toDataURL('image/png');
+        compressImage(base64, 1024).then((compressed) => {
+          setReferenceImage({ base64: compressed, mimeType: 'image/jpeg' });
+        });
+        img.remove();
+        canvas.remove();
+      };
+      img.onerror = () => {
+        setError('Could not load image for reference.');
+      };
+      img.src = url;
+      return;
+    }
+
     const video = document.createElement('video');
     video.crossOrigin = 'anonymous';
     video.muted = true;
     video.preload = 'auto';
-    video.src = videoUrl;
+    video.src = url;
     video.onloadeddata = () => {
       video.currentTime = 0;
       const canvas = document.createElement('canvas');
@@ -1092,7 +1188,9 @@ export default function ManagerCreateCreative() {
       canvas.height = video.videoHeight;
       canvas.getContext('2d').drawImage(video, 0, 0);
       const base64 = canvas.toDataURL('image/png');
-      setReferenceImage({ base64, mimeType: 'image/png' });
+      compressImage(base64, 1024).then((compressed) => {
+        setReferenceImage({ base64: compressed, mimeType: 'image/jpeg' });
+      });
       video.remove();
       canvas.remove();
     };
@@ -1105,6 +1203,7 @@ export default function ManagerCreateCreative() {
   const [generating, setGenerating] = useState(false);
   const [showRevisionPanel, setShowRevisionPanel] = useState(true);
   const [referenceImage, setReferenceImage] = useState(null);
+  const [editingAsset, setEditingAsset] = useState(null);
   const [generatedAssets, setGeneratedAssets] = useState([]);
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [campaignAd, setCampaignAd] = useState(null);
@@ -1290,7 +1389,7 @@ export default function ManagerCreateCreative() {
           .map(e => ({
             id: e.id,
             mediaId: e.generated_media || null,
-            type: e.event_type === 'merge' ? 'video' : session.media_type,
+            type: e.event_type === 'merge' ? 'video' : (e.media_type || session.media_type),
             url: e.file,
             prompt: e.prompt || '',
             model: e.model_used || '',
@@ -1470,6 +1569,7 @@ export default function ManagerCreateCreative() {
         media_type: mediaType,
         width,
         height,
+        edit_mode: !!referenceImage,
       });
       setPrompt(result.enhanced);
       if (result.negative_prompt) {
@@ -1518,11 +1618,17 @@ export default function ManagerCreateCreative() {
     try {
       const aspectRatio = toAspectRatio(width, height);
       if (mediaType === 'image') {
-        const result = await ads.generateImage({
+        const imagePayload = {
           prompt: prompt.trim(),
           aspect_ratio: aspectRatio,
           model: selectedImageModel,
-        });
+        };
+        if (inputImageUpload?.base64) {
+          imagePayload.input_image = inputImageUpload.base64;
+        } else if (referenceImage) {
+          imagePayload.input_image = referenceImage.base64;
+        }
+        const result = await ads.generateImage(imagePayload);
         const newAsset = {
           type: 'image', url: result.url, prompt: prompt.trim(),
           width, height, style, model: result.model_used,
@@ -1548,21 +1654,33 @@ export default function ManagerCreateCreative() {
           }).catch(() => {});
         }
       } else {
-        const perClipDuration = duration > 8 ? 8 : [4, 6, 8].reduce((a, b) => Math.abs(b - duration) < Math.abs(a - duration) ? b : a);
-        const effectivePrompt = !audioEnabled
-          ? `Silent video, no audio, no speech, no voiceover. ${prompt.trim()}`
-          : prompt.trim();
+        const hasBothFrames = lastFrameImage?.base64 && (inputImageUpload?.base64 || referenceImage);
+        const perClipDuration = hasBothFrames ? 8 : (duration > 8 ? 8 : [4, 6, 8].reduce((a, b) => Math.abs(b - duration) < Math.abs(a - duration) ? b : a));
+        let effectivePrompt;
+        if (editingAsset && referenceImage) {
+          const originalContext = editingAsset.prompt
+            ? `Original scene: ${editingAsset.prompt}.`
+            : '';
+          effectivePrompt = `Maintain the exact same scene composition, camera angle, lighting, and style as the reference image. ${originalContext} Apply only this specific change: ${prompt.trim()}. Do not change anything else about the scene.`;
+        } else {
+          effectivePrompt = !audioEnabled
+            ? `Silent video, no audio, no speech, no voiceover. ${prompt.trim()}`
+            : prompt.trim();
+        }
         const generatePayload = {
           prompt: effectivePrompt,
-          aspect_ratio: aspectRatio,
+          aspect_ratio: clampVideoAspectRatio(aspectRatio),
           duration_seconds: perClipDuration,
-          target_duration_seconds: duration,
+          target_duration_seconds: hasBothFrames ? 8 : duration,
           model: selectedVideoModel,
         };
-        if (referenceImage) {
-          generatePayload.input_image = referenceImage.base64;
-        } else if (inputImageUpload?.base64) {
+        if (inputImageUpload?.base64) {
           generatePayload.input_image = inputImageUpload.base64;
+        } else if (referenceImage) {
+          generatePayload.input_image = referenceImage.base64;
+        }
+        if (lastFrameImage?.base64) {
+          generatePayload.last_frame = lastFrameImage.base64;
         }
         const result = await ads.generateVideoClip(generatePayload);
         const newAsset = {
@@ -1599,6 +1717,7 @@ export default function ManagerCreateCreative() {
       setError(err.message);
     } finally {
       setGenerating(false);
+      setEditingAsset(null);
     }
   };
 
@@ -1699,31 +1818,40 @@ export default function ManagerCreateCreative() {
   const handleEditAsset = (asset) => {
     setMode('generate');
     setMediaType(asset.type);
-    const basePrompt = asset.prompt ? `Edit this ${asset.type}: ${asset.prompt}.` : `Edit this ${asset.type}.`;
-    setPrompt(basePrompt + ' ');
+    setPrompt('');
     setWidth(asset.width || 1024);
     setHeight(asset.height || 1024);
     setStyle(asset.style || null);
-    if (asset.type === 'video' && asset.duration) {
+    if (asset.duration) {
       setDuration(asset.duration);
     }
     setSelectedAsset(asset);
+    setEditingAsset(asset);
     if (asset.url) {
-      handleCaptureReference(asset.url);
+      handleCaptureReference(asset.url, asset.type);
     }
     setTimeout(() => {
       const promptEl = document.querySelector('textarea');
       if (promptEl) {
         promptEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
         promptEl.focus();
-        promptEl.setSelectionRange(promptEl.value.length, promptEl.value.length);
       }
     }, 100);
   };
 
-  const removeAsset = (id) => {
+  const removeAsset = async (id) => {
+    const asset = generatedAssets.find(a => a.id === id);
+    const label = asset?.type === 'video' ? 'video' : 'image';
+    if (!window.confirm(`Delete this ${label}? This cannot be undone.`)) return;
+
     setGeneratedAssets(prev => prev.filter(a => a.id !== id));
     if (selectedAsset?.id === id) setSelectedAsset(null);
+
+    try {
+      await ads.deleteAsset({ media_id: asset?.mediaId || null, event_id: id });
+    } catch {
+      // Backend delete failed — asset already removed from UI, acceptable
+    }
   };
 
   return (
@@ -1936,9 +2064,9 @@ export default function ManagerCreateCreative() {
                             }`}
                           >
                             {asset.type === 'video' ? (
-                              <video src={asset.url} className="w-full h-16 object-cover" muted />
+                              <video src={proxyMediaUrl(asset.url)} className="w-full h-16 object-cover" muted />
                             ) : (
-                              <img src={asset.url} alt="" className="w-full h-16 object-cover" />
+                              <img src={proxyMediaUrl(asset.url)} alt="" className="w-full h-16 object-cover" />
                             )}
                             <div className="flex items-center justify-center gap-0.5 absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button
@@ -2478,9 +2606,9 @@ export default function ManagerCreateCreative() {
                   }`}>
                     <img src={referenceImage.base64} alt="Reference" className="w-16 h-16 rounded-lg object-cover border flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className={`text-xs font-bold ${dark ? 'text-amber-300' : 'text-amber-800'}`}>Editing from reference frame</p>
+                      <p className={`text-xs font-bold ${dark ? 'text-amber-300' : 'text-amber-800'}`}>Editing from reference {mediaType === 'video' ? 'frame' : 'image'}</p>
                       <p className={`text-[10px] ${dark ? 'text-amber-400/70' : 'text-amber-600'}`}>
-                        Your prompt will be applied to this frame. The AI will generate a new video based on this image + your prompt.
+                        Your prompt will be applied to this {mediaType === 'video' ? 'frame' : 'image'}. The AI will generate a new {mediaType} based on this image + your prompt.
                       </p>
                     </div>
                     <button
@@ -2562,7 +2690,7 @@ export default function ManagerCreateCreative() {
                             </button>
                           ) : (
                             <div className={`flex items-center gap-3 p-2 rounded-xl border ${dark ? 'bg-neutral-800/60 border-neutral-700' : 'bg-stone-50 border-stone-200'}`}>
-                              <img src={inputImageUpload.source === 'generated' && inputImageUpload.previewUrl ? inputImageUpload.previewUrl : inputImageUpload.base64} alt="" className="w-14 h-14 rounded-lg object-cover flex-shrink-0 border" />
+                              <img src={proxyMediaUrl(inputImageUpload.source === 'generated' && inputImageUpload.previewUrl ? inputImageUpload.previewUrl : inputImageUpload.base64)} alt="" className="w-14 h-14 rounded-lg object-cover flex-shrink-0 border" />
                               <div className="flex-1 min-w-0">
                                 <div className={`text-[10px] font-medium truncate ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>{inputImageUpload.fileName || 'Selected image'}</div>
                                 <div className={`text-[8px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>Source: {inputImageUpload.source === 'upload' ? 'Device upload' : 'Generated image'}</div>
@@ -2599,7 +2727,7 @@ export default function ManagerCreateCreative() {
                                 handleSelectGeneratedImage(asset);
                               }
                             }} className={`relative rounded-lg overflow-hidden border-2 transition-all ${isSelected ? 'border-amber-500 ring-1 ring-amber-500/30' : dark ? 'border-neutral-700 hover:border-amber-500/40' : 'border-stone-200 hover:border-amber-400'}`}>
-                                    <img src={asset.url} alt="" className="w-full aspect-[3/2] object-cover" />
+                                    <img src={proxyMediaUrl(asset.url)} alt="" className="w-full aspect-[3/2] object-cover" />
                                     {isSelected && <div className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-amber-500 flex items-center justify-center"><svg className="w-2 h-2 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg></div>}
                                   </button>
                                 );
@@ -2607,6 +2735,97 @@ export default function ManagerCreateCreative() {
                             </div>
                           )}
                         </div>
+                      )}
+                    </div>
+                    )}
+                  </div>
+                )}
+
+                {/* --- End Frame Image (only for video mode) --- */}
+                {mediaType === 'video' && (
+                  <div className={`rounded-xl border mb-4 transition-all duration-300 ${
+                    dark ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white/90 border-stone-200 shadow-sm'
+                  }`}>
+                    <button
+                      onClick={() => setShowEndFrame(!showEndFrame)}
+                      className={`w-full flex items-center gap-2 px-4 pt-3 pb-3 transition-colors ${
+                        dark ? 'hover:bg-neutral-800/50' : 'hover:bg-stone-50'
+                      }`}
+                    >
+                      <svg className={`w-4 h-4 ${dark ? 'text-purple-400' : 'text-purple-600'} transition-transform duration-200 ${showEndFrame ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                      </svg>
+                      <svg className={`w-4 h-4 ${dark ? 'text-purple-400' : 'text-purple-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.41a2.25 2.25 0 013.182 0l2.909 2.91m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                      </svg>
+                      <h4 className={`text-xs font-bold ${dark ? 'text-neutral-200' : 'text-neutral-800'}`}>
+                        End Frame
+                      </h4>
+                      <span className={`text-[9px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
+                        ({lastFrameImage ? 'image selected' : 'optional'})
+                      </span>
+                      {lastFrameImage && (
+                        <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                          dark ? 'bg-purple-500/10 text-purple-300' : 'bg-purple-50 text-purple-700'
+                        }`}>
+                          <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+                          Set
+                        </span>
+                      )}
+                      <svg className={`w-3.5 h-3.5 ml-auto transition-transform duration-200 ${showEndFrame ? 'rotate-180' : ''} ${
+                        dark ? 'text-neutral-500' : 'text-stone-400'
+                      }`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                      </svg>
+                    </button>
+                    {showEndFrame && (
+                    <div className="px-4 pb-3">
+                      {lastFrameImage ? (
+                        <div className={`flex items-center gap-3 p-2 rounded-xl border ${dark ? 'bg-neutral-800/60 border-neutral-700' : 'bg-stone-50 border-stone-200'}`}>
+                          <img src={proxyMediaUrl(lastFrameImage.source === 'generated' && lastFrameImage.previewUrl ? lastFrameImage.previewUrl : lastFrameImage.base64)} alt="" className="w-14 h-14 rounded-lg object-cover flex-shrink-0 border" />
+                          <div className="flex-1 min-w-0">
+                            <div className={`text-[10px] font-medium truncate ${dark ? 'text-neutral-300' : 'text-neutral-700'}`}>{lastFrameImage.fileName || 'End frame'}</div>
+                            <div className={`text-[8px] ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>Source: {lastFrameImage.source === 'upload' ? 'Device upload' : 'Generated image'}</div>
+                          </div>
+                          <button onClick={() => lastFrameFileRef.current?.click()} className={`px-2 py-1 rounded text-[9px] font-medium transition-colors ${dark ? 'text-purple-400 bg-purple-500/10 hover:bg-purple-500/20' : 'text-purple-700 bg-purple-50 hover:bg-purple-100'}`}>Change</button>
+                          <button
+                            onClick={() => setLastFrameImage(null)}
+                            className={`px-2 py-1 rounded text-[9px] font-medium transition-colors ${
+                              dark ? 'text-red-400 bg-red-500/10 hover:bg-red-500/20' : 'text-red-600 bg-red-50 hover:bg-red-100'
+                            }`}
+                          >
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <input ref={lastFrameFileRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleLastFrameUpload} className="hidden" />
+                          <div className="flex gap-2">
+                            <button onClick={() => lastFrameFileRef.current?.click()} className={`flex-1 p-3 rounded-xl border-2 border-dashed transition-all cursor-pointer ${dark ? 'border-neutral-700 hover:border-purple-500/40 bg-neutral-800/30 hover:bg-neutral-800/50' : 'border-stone-300 hover:border-purple-400 bg-stone-50/50 hover:bg-stone-100'}`}>
+                              <div className="flex flex-col items-center gap-1.5">
+                                <svg className={`w-6 h-6 ${dark ? 'text-neutral-500' : 'text-stone-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
+                                <span className={`text-[10px] font-medium ${dark ? 'text-neutral-400' : 'text-stone-500'}`}>Upload End Frame</span>
+                              </div>
+                            </button>
+                            {generatedImageAssets.length > 0 && (
+                              <div className={`flex-1 p-3 rounded-xl border-2 border-dashed transition-all ${dark ? 'border-neutral-700 bg-neutral-800/30' : 'border-stone-300 bg-stone-50/50'}`}>
+                                <p className={`text-[9px] mb-2 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>Or pick from generated:</p>
+                                <div className="flex gap-1 overflow-x-auto pb-1">
+                                  {generatedImageAssets.slice(0, 6).map((asset) => (
+                                    <button key={asset.id} onClick={() => handleLastFrameSelectGenerated(asset)} className={`flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden border-2 transition-all ${dark ? 'border-neutral-700 hover:border-purple-500/40' : 'border-stone-200 hover:border-purple-400'}`}>
+                                      <img src={proxyMediaUrl(asset.url)} alt="" className="w-full h-full object-cover" />
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          <p className={`text-[9px] mt-2 ${dark ? 'text-neutral-600' : 'text-stone-400'}`}>
+                            Video will smoothly transition from the start frame to this end frame. Duration locked to 8 seconds.
+                          </p>
+                        </>
                       )}
                     </div>
                     )}
@@ -2691,9 +2910,9 @@ export default function ManagerCreateCreative() {
                       <div className="flex-1 flex items-center justify-center p-4" style={{ aspectRatio: `${width}/${height}` }}>
                         {selectedAsset ? (
                           selectedAsset.type === 'video' ? (
-                            <video src={selectedAsset.url} controls className="max-w-full max-h-full rounded-lg object-contain" />
+                            <video src={proxyMediaUrl(selectedAsset.url)} controls className="max-w-full max-h-full rounded-lg object-contain" />
                           ) : (
-                            <img src={selectedAsset.url} alt="" className="max-w-full max-h-full rounded-lg object-contain" />
+                            <img src={proxyMediaUrl(selectedAsset.url)} alt="" className="max-w-full max-h-full rounded-lg object-contain" />
                           )
                         ) : (
                           <div className={`flex flex-col items-center gap-2 ${dark ? 'text-neutral-500' : 'text-stone-400'}`}>
@@ -2785,9 +3004,9 @@ export default function ManagerCreateCreative() {
                         >
                           <div className="w-full aspect-square">
                             {asset.type === 'video' ? (
-                              <video src={asset.url} className="w-full h-full object-cover" muted autoPlay playsInline loop />
+                              <video src={proxyMediaUrl(asset.url)} className="w-full h-full object-cover" muted autoPlay playsInline loop />
                             ) : (
-                              <img src={asset.url} alt="" className="w-full h-full object-cover" />
+                              <img src={proxyMediaUrl(asset.url)} alt="" className="w-full h-full object-cover" />
                             )}
                           </div>
                           <div className={`absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20`}>
@@ -2861,13 +3080,13 @@ export default function ManagerCreateCreative() {
                   }}
                 >
                   {item.media_type === 'video' ? (
-                    <video src={item.file} className="w-full h-28 object-cover" muted />
+                    <video src={proxyMediaUrl(item.file)} className="w-full h-28 object-cover" muted />
                   ) : (
-                    <img src={item.file} alt="" className="w-full h-28 object-cover" />
+                    <img src={proxyMediaUrl(item.file)} alt="" className="w-full h-28 object-cover" />
                   )}
                   <div className={`p-2 ${dark ? 'bg-neutral-800' : 'bg-stone-50'}`}>
-                    <p className="text-[10px] leading-tight line-clamp-2 mb-1">{item.prompt || 'No prompt'}</p>
-                    <div className="flex items-center gap-2 text-[9px] opacity-60 mb-1.5">
+                    <p className={`text-[10px] leading-tight line-clamp-2 mb-1 ${dark ? 'text-neutral-300' : 'text-neutral-800'}`}>{item.prompt || 'No prompt'}</p>
+                    <div className={`flex items-center gap-2 text-[9px] mb-1.5 ${dark ? 'text-neutral-500' : 'text-stone-500 opacity-60'}`}>
                       <span>{item.model_used}</span>
                       {item.duration_seconds && <span>{item.duration_seconds}s</span>}
                     </div>
@@ -2875,18 +3094,19 @@ export default function ManagerCreateCreative() {
                       onClick={async (e) => {
                         e.stopPropagation();
                         try {
-                          const resp = await fetch(item.file);
+                          const proxyUrl = proxyMediaUrl(item.file);
+                          const resp = await fetch(proxyUrl);
                           const blob = await resp.blob();
-                          const url = URL.createObjectURL(blob);
+                          const blobUrl = URL.createObjectURL(blob);
                           const a = document.createElement('a');
-                          a.href = url;
+                          a.href = blobUrl;
                           a.download = (item.file.split('/').pop() || 'download-' + item.id).split('?')[0];
                           document.body.appendChild(a);
                           a.click();
                           document.body.removeChild(a);
-                          URL.revokeObjectURL(url);
+                          URL.revokeObjectURL(blobUrl);
                         } catch {
-                          window.open(item.file, '_self');
+                          window.open(item.file, '_blank');
                         }
                       }}
                       className={`w-full flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[9px] font-medium transition-all ${

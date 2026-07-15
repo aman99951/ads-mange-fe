@@ -60,3 +60,15 @@ export const ROUTES = {
 };
 
 export const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000/api';
+
+/**
+ * Wrap a remote URL through the backend media proxy to bypass CORS.
+ * Returns the original URL if it's already a local/data URL.
+ */
+export function proxyMediaUrl(url) {
+  if (!url) return url;
+  if (url.startsWith('data:') || url.startsWith('blob:')) return url;
+  if (url.includes('/api/') || url.includes('/media/')) return url;
+  // Only proxy external URLs (S3, CDN, etc.)
+  return `${API_BASE}/ads/media_proxy/?url=${encodeURIComponent(url)}`;
+}

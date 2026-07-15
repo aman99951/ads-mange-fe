@@ -1,10 +1,14 @@
+import { proxyMediaUrl } from '../../constants';
+
 export default function AssetLightbox({ asset, dark, onClose }) {
   if (!asset) return null;
+
+  const proxiedUrl = proxyMediaUrl(asset.url);
 
   const handleDownload = async (e) => {
     e.stopPropagation();
     try {
-      const resp = await fetch(asset.url);
+      const resp = await fetch(proxiedUrl);
       const blob = await resp.blob();
       const ext = asset.type === 'video' ? '.mp4' : '.jpg';
       const name = asset.prompt
@@ -19,7 +23,6 @@ export default function AssetLightbox({ asset, dark, onClose }) {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err) {
-      // Fallback: open in new tab
       window.open(asset.url, '_blank');
     }
   };
@@ -75,14 +78,14 @@ export default function AssetLightbox({ asset, dark, onClose }) {
       >
         {asset.type === 'video' ? (
           <video
-            src={asset.url}
+            src={proxiedUrl}
             controls
             autoPlay
             className="max-w-[90vw] max-h-[85vh] object-contain rounded-2xl"
           />
         ) : (
           <img
-            src={asset.url}
+            src={proxiedUrl}
             alt={asset.prompt || ''}
             className="max-w-[90vw] max-h-[85vh] object-contain rounded-2xl"
           />
